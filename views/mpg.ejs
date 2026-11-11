@@ -1,0 +1,27 @@
+<%- include('partials/header', { title: 'MPG' }) %>
+<h1>연비 / MPG</h1>
+<p class="notice">MPG = 마일 ÷ 갤런 (해당 주 확정 운행 마일 ÷ 연료 갤런). <b>MPG 6.0 미만이면 "연비 개선 필요"</b> 표시. 양호 ~7.2–7.3, 나쁨 ~6.2–6.3.<br>
+MPG = miles ÷ gallons for the week. Below 6.0 is flagged "연비 개선 필요" (needs fuel-economy improvement).</p>
+
+<% table.forEach(function(w){ %>
+<div class="card">
+  <h2><%= w.weekStartISO %> 주 / Week of <%= w.weekStartISO %></h2>
+  <div class="table-wrap"><table>
+    <tr><th>기사 / Driver</th><th class="num">마일 / Miles</th><th class="num">갤런 / Gallons</th><th class="num">MPG</th><th>판정</th></tr>
+    <% w.rows.forEach(function(r){ %>
+    <tr>
+      <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)</td>
+      <td class="num"><%= r.miles %></td>
+      <td class="num"><%= r.gallons %></td>
+      <td class="num"><%= r.mpg === null ? '—' : r.mpg %></td>
+      <td>
+        <% if (r.mpg === null) { %><span class="notice">데이터 없음</span>
+        <% } else if (r.mpgFlag) { %><span class="badge flag">연비 개선 필요</span>
+        <% } else { %><span class="badge good">양호</span><% } %>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+<% }) %>
+<%- include('partials/footer') %>

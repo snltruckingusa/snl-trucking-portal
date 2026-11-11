@@ -1,0 +1,73 @@
+<%- include('partials/header', { title: 'DVIR' }) %>
+<h1>차량 점검 / DVIR &amp; Mechanic Logs</h1>
+
+<div class="card">
+  <h2>DVIR — 일일 차량 점검 / Daily Vehicle Inspection</h2>
+  <form method="POST" action="/dvir/dvir">
+    <div class="form-row">
+      <% if (isAdmin) { %>
+      <div><label>기사 / Driver</label><select name="driver_id" required>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %></option><% }) %>
+      </select></div>
+      <% } else { %>
+      <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
+      <% } %>
+      <div><label>날짜 / Date</label><input type="date" name="inspection_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+      <div><label>트럭 / Truck #</label><input name="truck_number" placeholder="100"></div>
+    </div>
+    <label>결함 / Defects (없으면 비워두세요 — leave blank if none)</label>
+    <textarea name="defects" rows="2"></textarea>
+    <label style="display:inline"><input type="checkbox" name="safe_to_operate" checked> 운행 가능 / Safe to operate</label>
+    <div style="margin-top:12px"><button type="submit">DVIR 저장 / Save DVIR</button></div>
+  </form>
+
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <tr><th>날짜</th><th>기사</th><th>트럭</th><th>결함</th><th>운행 가능</th><th></th></tr>
+    <% dvir.forEach(function(v){ %>
+    <tr>
+      <td><%= fmtDate(v.inspection_date) %></td>
+      <td><%= v.driver_name %></td>
+      <td>#<%= v.truck_number || '' %></td>
+      <td><%= v.defects || '—' %></td>
+      <td><%= v.safe_to_operate ? '예 / Yes' : '아니오 / No' %></td>
+      <td>
+        <form class="inline" method="POST" action="/dvir/dvir/<%= v.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% if (!dvir.length) { %><p class="notice">DVIR 기록이 없습니다. No DVIR records.</p><% } %>
+</div>
+
+<div class="card">
+  <h2>정비 기록 / Mechanic Logs</h2>
+  <form method="POST" action="/dvir/mechanic">
+    <div class="form-row">
+      <div><label>트럭 / Truck #</label><input name="truck_number" required placeholder="100"></div>
+      <div><label>날짜 / Date</label><input type="date" name="log_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+      <div><label>정비사 / Mechanic</label><input name="mechanic" placeholder="George"></div>
+      <div><label>비용 / Cost ($)</label><input name="cost" type="number" step="0.01" value="0"></div>
+    </div>
+    <label>작업 내용 / Work done</label>
+    <textarea name="description" rows="2" required></textarea>
+    <div style="margin-top:12px"><button type="submit">기록 저장 / Save log</button></div>
+  </form>
+
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <tr><th>날짜</th><th>트럭</th><th>작업 내용</th><th>정비사</th><th class="num">비용</th><th></th></tr>
+    <% logs.forEach(function(l){ %>
+    <tr>
+      <td><%= fmtDate(l.log_date) %></td>
+      <td>#<%= l.truck_number %></td>
+      <td><%= l.description %></td>
+      <td><%= l.mechanic || '' %></td>
+      <td class="num"><%= money(l.cost) %></td>
+      <td>
+        <form class="inline" method="POST" action="/dvir/mechanic/<%= l.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% if (!logs.length) { %><p class="notice">정비 기록이 없습니다. No mechanic logs.</p><% } %>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,52 @@
+<%- include('partials/header', { title: 'Documents' }) %>
+<h1>기사 서류 / Driver Documents</h1>
+<p class="notice">MVR, Medical Card, CDL, 차량 등록, 계약서를 기사별로 보관합니다. Keep each driver's MVR, medical card, CDL, registration, and contracts here.</p>
+
+<div class="card">
+  <form method="GET" action="/documents" class="form-row" style="align-items:end">
+    <% if (isAdmin) { %>
+    <div><label>기사 / Driver</label><select name="driver_id">
+      <% drivers.forEach(function(d){ %><option value="<%= d.id %>" <%= driver && String(driver.id) === String(d.id) ? 'selected' : '' %>><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+    </select></div>
+    <% } %>
+    <div><button type="submit">보기 / View</button></div>
+  </form>
+</div>
+
+<% if (driver) { %>
+<div class="card">
+  <h2><%= driver.name %> — 서류 올리기 / Upload document</h2>
+  <form method="POST" action="/documents/upload" enctype="multipart/form-data">
+    <input type="hidden" name="driver_id" value="<%= driver.id %>">
+    <div class="form-row">
+      <div><label>종류 / Category</label><select name="category">
+        <% Object.keys(categories).forEach(function(k){ %><option value="<%= k %>"><%= categories[k] %></option><% }) %>
+      </select></div>
+      <div><label>파일 / File</label><input type="file" name="file" required></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">올리기 / Upload</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>서류 목록 / Documents</h2>
+  <% if (!docs.length) { %><p class="notice">서류가 없습니다. No documents yet.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>종류</th><th>파일</th><th>올린 날짜</th><th></th></tr>
+    <% docs.forEach(function(doc){ %>
+    <tr>
+      <td><%= categories[doc.category] || doc.category %></td>
+      <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
+      <td><%= fmtDate(doc.uploaded_at) %></td>
+      <td>
+        <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% } %>
+</div>
+<% } else { %>
+<p class="notice">기사를 선택하세요. Select a driver to view their documents.</p>
+<% } %>
+<%- include('partials/footer') %>

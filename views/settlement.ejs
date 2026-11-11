@@ -1,0 +1,72 @@
+<%- include('partials/header', { title: 'Settlement' }) %>
+<h1>주간 정산 / Weekly Settlement</h1>
+<p class="notice">주: 월요일 ~ 일요일 (Mon–Sun). 정산식: 기사 급여 = (확정 수입 − 연료 − 보험 $100/일) × 50%. 금요일 마감 (Friday close-out). 정산은 1주일 후 지급됩니다 (1 week in arrears).</p>
+
+<div class="card">
+  <form method="GET" action="/settlement" class="form-row" style="align-items:end">
+    <div><label>주 시작일 (월요일) / Week of (Mon)</label><input type="date" name="week" value="<%= weekStartISO %>"></div>
+    <div><button type="submit">조회 / View week</button>
+      <a class="btn secondary" href="/settlement?week=<%= prevWeek %>">← 지난주</a>
+      <a class="btn secondary" href="/settlement?week=<%= nextWeek %>">다음주 →</a></div>
+  </form>
+  <p style="margin-top:10px"><b><%= weekStartISO %> ~ <%= weekEndISO %></b></p>
+</div>
+
+<div class="grid">
+  <div class="stat"><div class="label">확정 수입 / Confirmed revenue</div><div class="value"><%= money(totals.revenue) %></div></div>
+  <div class="stat"><div class="label">연료 / Fuel</div><div class="value"><%= money(totals.fuelCost) %></div></div>
+  <div class="stat"><div class="label">보험 / Insurance</div><div class="value"><%= money(totals.insurance) %></div></div>
+  <div class="stat"><div class="label">기사 급여 합계 / Driver pay</div><div class="value"><%= money(totals.driverPay) %></div></div>
+  <div class="stat"><div class="label">회사 순이익 / Company net</div><div class="value"><%= money(totals.companyNet) %></div></div>
+  <div class="stat"><div class="label">이번 주 입금 / Receipts</div><div class="value"><%= money(receiptsTotal) %> (<%= receiptsCount %>건)</div></div>
+  <div class="stat"><div class="label">확인 대기 / Pending entries</div><div class="value"><%= pendingCount %> 건</div></div>
+</div>
+
+<div class="card">
+  <div class="table-wrap"><table>
+    <tr><th>기사 / Driver</th><th class="num">수입<br>Revenue</th><th class="num">연료<br>Fuel</th><th class="num">보험<br>Insurance</th><th class="num">순이익<br>Net</th><th class="num">기사 급여<br>Driver pay</th><th class="num">회사<br>Company</th><th class="num">마일 / 갤런</th><th class="num">MPG</th><th>상태</th><th></th></tr>
+    <% rows.forEach(function(r){ %>
+    <tr class="<%= r.saved && r.saved.status === 'closed' ? 'closed' : '' %>">
+      <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %>일 근무 · <%= r.driver.pay_split %>%</span></td>
+      <td class="num"><%= money(r.revenue) %></td>
+      <td class="num"><%= money(r.fuelCost) %></td>
+      <td class="num"><%= money(r.insurance) %></td>
+      <td class="num"><%= money(r.net) %></td>
+      <td class="num"><b><%= money(r.driverPay) %></b></td>
+      <td class="num"><%= money(r.companyNet) %></td>
+      <td class="num"><%= r.miles %> / <%= r.gallons %></td>
+      <td class="num">
+        <% if (r.mpg === null) { %>—<% } else { %>
+          <%= r.mpg %>
+          <% if (r.mpgFlag) { %><br><span class="badge flag">연비 개선 필요</span><% } else { %><br><span class="badge good">양호</span><% } %>
+        <% } %>
+      </td>
+      <td>
+        <% if (r.saved) { %><span class="badge <%= r.saved.status %>"><%= r.saved.status === 'closed' ? '마감' : '진행중' %></span><% } else { %><span class="badge open">미마감</span><% } %>
+      </td>
+      <td>
+        <% if (isAdmin) { %>
+          <% if (!r.saved || r.saved.status !== 'closed') { %>
+          <form class="inline" method="POST" action="/settlement/close"><input type="hidden" name="week" value="<%= weekStartISO %>"><input type="hidden" name="driver_id" value="<%= r.driver.id %>"><button class="btn small" type="submit">마감 / Close</button></form>
+          <% } else { %>
+          <form class="inline" method="POST" action="/settlement/reopen"><input type="hidden" name="week" value="<%= weekStartISO %>"><input type="hidden" name="driver_id" value="<%= r.driver.id %>"><button class="btn small secondary" type="submit">다시 열기 / Reopen</button></form>
+          <% } %>
+        <% } %>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% if (isAdmin) { %>
+  <div style="margin-top:12px">
+    <form class="inline" method="POST" action="/settlement/close" onsubmit="return confirm('이번 주 전체를 마감할까요?')">
+      <input type="hidden" name="week" value="<%= weekStartISO %>">
+      <button type="submit">전체 마감 / Close all (Friday close-out)</button>
+    </form>
+    <form class="inline" method="POST" action="/settlement/reopen" onsubmit="return confirm('이번 주 전체를 다시 열까요?')">
+      <input type="hidden" name="week" value="<%= weekStartISO %>">
+      <button class="btn secondary" type="submit">전체 다시 열기 / Reopen all</button>
+    </form>
+  </div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

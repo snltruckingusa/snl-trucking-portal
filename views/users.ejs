@@ -1,0 +1,38 @@
+<%- include('partials/header', { title: 'Users' }) %>
+<h1>계정 관리 / User Accounts</h1>
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+<% if (typeof notice !== 'undefined' && notice) { %><div class="alert ok"><%= notice %></div><% } %>
+
+<div class="card">
+  <h2>계정 만들기 / Create account</h2>
+  <p class="notice">기사 계정은 기사 한 명당 하나씩 만듭니다. 비밀번호는 관리자가 정해 기사에게 알려줍니다. 기사는 첫 로그인 때 비밀번호를 바꿔야 합니다.</p>
+  <form method="POST" action="/users">
+    <div class="form-row">
+      <div><label>아이디 / Username</label><input name="username" required></div>
+      <div><label>비밀번호 (8자 이상) / Password (8+ chars)</label><input type="password" name="password" required></div>
+      <div><label>역할 / Role</label><select name="role"><option value="driver">기사 / Driver</option><option value="admin">관리자 / Admin</option></select></div>
+      <div><label>연결할 기사 / Linked driver</label><select name="driver_id"><option value="">— (관리자용)</option>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+      </select></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">만들기 / Create</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap"><table>
+    <tr><th>아이디</th><th>역할</th><th>연결된 기사</th><th></th></tr>
+    <% users.forEach(function(u){ %>
+    <tr>
+      <td><%= u.username %></td>
+      <td><%= u.role %></td>
+      <td><%= u.driver_name || '—' %></td>
+      <td>
+        <form class="inline" method="POST" action="/users/<%= u.id %>/reset" onsubmit="return confirm('이 계정의 비밀번호를 임시 비밀번호로 초기화할까요?')"><button class="btn small secondary" type="submit">비밀번호 초기화</button></form>
+        <form class="inline" method="POST" action="/users/<%= u.id %>/delete" onsubmit="return confirm('정말 삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+<%- include('partials/footer') %>

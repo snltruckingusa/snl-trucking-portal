@@ -1,0 +1,18 @@
+# S&L Trucking Settlement Portal — Render deployment
+services:
+  - type: web
+    name: snl-trucking-portal
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: snltrucking-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true

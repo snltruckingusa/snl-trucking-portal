@@ -1,0 +1,39 @@
+<%- include('partials/header', { title: 'Drivers' }) %>
+<h1>기사 명단 / Drivers</h1>
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+
+<div class="card">
+  <h2>기사 추가 / Add driver</h2>
+  <form method="POST" action="/drivers">
+    <div class="form-row">
+      <div><label>이름 / Name</label><input name="name" required></div>
+      <div><label>트럭 번호 / Truck #</label><input name="truck_number" placeholder="100"></div>
+      <div><label>정산 비율 % / Pay split %</label><input name="pay_split" type="number" step="0.01" value="50"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">추가 / Add</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap"><table>
+    <tr><th>이름</th><th>트럭</th><th>정산 %</th><th>상태</th><th>수정</th><th></th></tr>
+    <% drivers.forEach(function(d){ %>
+    <tr>
+      <form method="POST" action="/drivers/<%= d.id %>/edit">
+        <td><input name="name" value="<%= d.name %>" required></td>
+        <td><input name="truck_number" value="<%= d.truck_number || '' %>"></td>
+        <td><input name="pay_split" type="number" step="0.01" value="<%= d.pay_split %>"></td>
+        <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> 활동중</label></td>
+        <td><button class="btn small" type="submit">저장 / Save</button></td>
+      </form>
+      <td>
+        <form class="inline" method="POST" action="/drivers/<%= d.id %>/delete" onsubmit="return confirm('정말 삭제할까요? 운행/연료/정산 기록이 있으면 삭제할 수 없습니다.')">
+          <button class="btn small danger" type="submit">삭제 / Delete</button>
+        </form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">기사 삭제는 운행·연료·정산 기록이 없을 때만 가능합니다. 기록이 있는 기사는 비활성화하세요.</p>
+</div>
+<%- include('partials/footer') %>

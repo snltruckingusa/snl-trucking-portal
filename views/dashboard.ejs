@@ -1,0 +1,73 @@
+<%- include('partials/header', { title: 'Dashboard' }) %>
+<h1>대시보드 / Dashboard</h1>
+
+<% if (isAdmin) { %>
+  <div class="grid">
+    <div class="stat"><div class="label">이번 주 (<%= weekStartISO %> ~ <%= weekEndISO %>) 확정 수입<br>Confirmed revenue</div><div class="value"><%= money(summary.revenue) %></div></div>
+    <div class="stat"><div class="label">이번 주 연료비<br>Fuel this week</div><div class="value"><%= money(fuelCost) %></div></div>
+    <div class="stat"><div class="label">이번 주 입금 (PierLink)<br>Receipts this week</div><div class="value"><%= money(receiptsTotal) %></div></div>
+    <div class="stat"><div class="label">확인 대기 중<br>Pending entries</div><div class="value"><%= summary.pending_n %> 건</div></div>
+  </div>
+
+  <div class="card">
+    <h2>확인 대기 중인 운행 / Pending loads</h2>
+    <% if (!pending.length) { %><p class="notice">대기 중인 운행이 없습니다. No pending loads.</p><% } else { %>
+    <div class="table-wrap"><table>
+      <tr><th>날짜</th><th>기사</th><th>컨테이너</th><th>픽업 → 배송</th><th>금액</th><th></th></tr>
+      <% pending.forEach(function(l){ %>
+      <tr>
+        <td><%= fmtDate(l.load_date) %></td>
+        <td><%= l.driver_name %></td>
+        <td><%= l.container_no || '' %></td>
+        <td><%= l.pickup || '' %> → <%= l.delivery || '' %></td>
+        <td class="num"><%= money(Number(l.rate) + Number(l.prepull) + Number(l.overweight) + Number(l.fsc)) %></td>
+        <td><a class="btn small" href="/loads?status=pending">확인 / Review</a></td>
+      </tr>
+      <% }) %>
+    </table></div>
+    <% } %>
+  </div>
+
+  <div class="card">
+    <h2>기사 / Drivers</h2>
+    <div class="table-wrap"><table>
+      <tr><th>이름</th><th>트럭</th><th>정산 비율</th><th>상태</th></tr>
+      <% drivers.forEach(function(d){ %>
+      <tr><td><%= d.name %></td><td>#<%= d.truck_number || '' %></td><td class="num"><%= d.pay_split %>%</td><td><%= d.active ? '활동중' : '비활성' %></td></tr>
+      <% }) %>
+    </table></div>
+    <p style="margin-top:10px"><a class="btn" href="/settlement">이번 주 정산 보기 / View this week's settlement</a></p>
+  </div>
+
+<% } else { %>
+  <div class="card">
+    <h2><%= driver.name %> (#<%= driver.truck_number || '' %>) — 오늘 / Today (<%= today %>)</h2>
+    <% if (!todayLoads.length) { %><p class="notice">오늘 운행 기록이 없습니다. No loads today.</p><% } else { %>
+    <div class="table-wrap"><table>
+      <tr><th>컨테이너</th><th>픽업 → 배송</th><th>금액</th><th>상태</th></tr>
+      <% todayLoads.forEach(function(l){ %>
+      <tr>
+        <td><%= l.container_no || '' %></td>
+        <td><%= l.pickup || '' %> → <%= l.delivery || '' %></td>
+        <td class="num"><%= money(Number(l.rate) + Number(l.prepull) + Number(l.overweight) + Number(l.fsc)) %></td>
+        <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? '확정' : '대기' %></span></td>
+      </tr>
+      <% }) %>
+    </table></div>
+    <% } %>
+    <p>오늘 연료: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
+    <p><a class="btn" href="/loads">운행 입력 / Add a load</a> <a class="btn secondary" href="/fuel">연료 입력 / Add fuel</a></p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="label">이번 주 급여 (<%= weekStartISO %> ~ <%= weekEndISO %>)<br>This week's pay</div>
+      <div class="value"><%= thisWeek ? money(thisWeek.driver_pay) : '정산 전' %></div>
+      <div class="notice"><%= thisWeek ? (thisWeek.status === 'closed' ? '정산 마감됨 (Closed)' : '정산 진행 중 (Open)') : '아직 정산되지 않았습니다.' %></div></div>
+    <div class="stat"><div class="label">지난 주 급여 (<%= lastWeekStartISO %> ~ <%= lastWeekEndISO %>)<br>Last week's pay</div>
+      <div class="value"><%= lastWeek ? money(lastWeek.driver_pay) : '—' %></div>
+      <div class="notice"><%= lastWeek ? (lastWeek.status === 'closed' ? '정산 마감됨 (Closed)' : '정산 진행 중 (Open)') : '기록 없음' %></div></div>
+  </div>
+  <p><a class="btn" href="/settlement">내 정산 보기 / View my settlement</a></p>
+<% } %>
+
+<%- include('partials/footer') %>
