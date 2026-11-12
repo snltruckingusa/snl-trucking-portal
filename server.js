@@ -12,6 +12,10 @@ const { money, fmtDate } = require('./lib/helpers');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Behind Render/Cloudflare proxies: honor X-Forwarded-Proto so secure
+// session cookies are set correctly on HTTPS requests.
+app.set('trust proxy', 1);
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
