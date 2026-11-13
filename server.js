@@ -7,7 +7,7 @@ const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
 const { seed } = require('./seed');
-const { money, fmtDate } = require('./lib/helpers');
+const { money, fmtDate, loadTotal, PROGRESS_LABELS, expiringWithin } = require('./lib/helpers');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +22,9 @@ app.set('views', path.join(__dirname, 'views'));
 // Template helpers available in every view.
 app.locals.money = money;
 app.locals.fmtDate = fmtDate;
+app.locals.loadTotal = loadTotal;
+app.locals.PROGRESS_LABELS = PROGRESS_LABELS;
+app.locals.expiringWithin = expiringWithin;
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
