@@ -33,9 +33,12 @@ CREATE TABLE IF NOT EXISTS loads (
   appointment TIMESTAMPTZ,
   rate NUMERIC(10,2) NOT NULL DEFAULT 0,
   prepull NUMERIC(10,2) NOT NULL DEFAULT 0,
+  reefer NUMERIC(10,2) NOT NULL DEFAULT 0,
+  detention NUMERIC(10,2) NOT NULL DEFAULT 0,
   overweight NUMERIC(10,2) NOT NULL DEFAULT 0,
   fsc NUMERIC(10,2) NOT NULL DEFAULT 0,
   miles NUMERIC(10,2) NOT NULL DEFAULT 0,
+  progress TEXT NOT NULL DEFAULT 'scheduled' CHECK (progress IN ('scheduled', 'picked', 'delivered', 'returned')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed')),
   ticket_photo TEXT,
   notes TEXT,
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS documents (
   original_name TEXT NOT NULL,
   mime_type TEXT,
   size_bytes INTEGER,
+  expires_on DATE,
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -127,3 +131,11 @@ CREATE INDEX IF NOT EXISTS idx_settlements_week ON settlements (week_start);
 CREATE INDEX IF NOT EXISTS idx_documents_driver ON documents (driver_id);
 CREATE INDEX IF NOT EXISTS idx_dvir_driver_date ON dvir (driver_id, inspection_date);
 CREATE INDEX IF NOT EXISTS idx_mechanic_truck_date ON mechanic_logs (truck_number, log_date);
+
+-- Migrations for databases created before the 2026-11 redesign.
+-- seed.js runs this whole file at every boot, so these idempotent
+-- statements migrate the production database on deploy.
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS reefer NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS detention NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS progress TEXT NOT NULL DEFAULT 'scheduled';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS expires_on DATE;
