@@ -1,6 +1,7 @@
 // Weekly settlement (Mon-Sun) + MPG.
 // Per driver, per week:
-//   revenue  = sum(rate + prepull + overweight + FSC) over CONFIRMED loads
+//   revenue  = sum(rate + prepull + reefer + detention + overweight + FSC)
+//              over CONFIRMED loads
 //   fuel     = sum(cost) over fuel purchases in the week
 //   insurance = $100 x days worked (distinct dates with a confirmed load)
 //   net      = revenue - fuel - insurance
@@ -14,7 +15,7 @@ const express = require('express');
 const { query } = require('../db');
 const {
   requireLogin, requireAdmin, scopedDriverId, isAdmin,
-  weekStart, weekEnd, toISODate, addDays, num, INSURANCE_PER_DAY,
+  weekStart, weekEnd, toISODate, addDays, num, INSURANCE_PER_DAY, LOAD_MONEY_SQL,
 } = require('../lib/helpers');
 
 const router = express.Router();
@@ -33,11 +34,19 @@ async function computeWeek(weekStartISO, driverFilter) {
   const rows = [];
   for (const d of drivers) {
     const loads = await query(
-      `SELECT COALESCE(SUM(rate + prepull + overweight + fsc),0) AS revenue,
+      `SELECT COALESCE(SUM(${LOAD_MONEY_SQL}),0) AS revenue,
               COALESCE(SUM(miles),0) AS miles,
               COUNT(DISTINCT load_date) AS days_worked
        FROM loads WHERE driver_id = $1 AND status = 'confirmed'
          AND load_date >= $2 AND load_date <= $3`,
+      [d.id, wsISO, weISO]
+    );
+    // Statement detail: this driver's confirmed loads for the week,
+    // one row per load (Rate / Prepull / Reefer / Detention / OW / FSC).
+    const loadRows = await query(
+      `SELECT * FROM loads WHERE driver_id = $1 AND status = 'confirmed'
+         AND load_date >= $2 AND load_date <= $3
+       ORDER BY load_date, id`,
       [d.id, wsISO, weISO]
     );
     const fuel = await query(
@@ -63,6 +72,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     rows.push({
       driver: d, revenue, fuelCost, insurance, net, driverPay, companyNet,
       miles, gallons, mpg, daysWorked,
+      loads: loadRows.rows,
       mpgFlag: mpg !== null && mpg < 6.0,
       saved: saved.rows[0] || null,
     });

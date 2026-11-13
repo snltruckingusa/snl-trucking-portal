@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { query } = require('../db');
-const { requireLogin, scopedDriverId, num, fmtDate, isAdmin } = require('../lib/helpers');
+const { requireLogin, scopedDriverId, num, fmtDate, isAdmin, nextProgress } = require('../lib/helpers');
 
 const router = express.Router();
 
@@ -158,13 +158,14 @@ router.post('/', requireLogin, async (req, res) => {
   const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
   await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, overweight, fsc, miles, status, ticket_photo, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       appointment, rate, prepull, reefer, detention, overweight, fsc, miles, status, ticket_photo, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      (req.body.delivery || '').trim() || null,
      appointment && !isNaN(appointment) ? appointment : null,
-     num(req.body.rate), num(req.body.prepull), num(req.body.overweight), num(req.body.fsc),
+     num(req.body.rate), num(req.body.prepull), num(req.body.reefer), num(req.body.detention),
+     num(req.body.overweight), num(req.body.fsc),
      num(req.body.miles), req.body.status === 'confirmed' ? 'confirmed' : 'pending',
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null]
   );
@@ -179,17 +180,32 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
   await query(
     `UPDATE loads SET load_date=$1, container_no=$2, bol_ref=$3, pickup=$4, delivery=$5,
-       appointment=$6, rate=$7, prepull=$8, overweight=$9, fsc=$10, miles=$11, status=$12, notes=$13
-     WHERE id=$14`,
+       appointment=$6, rate=$7, prepull=$8, reefer=$9, detention=$10, overweight=$11, fsc=$12,
+       miles=$13, status=$14, notes=$15
+     WHERE id=$16`,
     [req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      (req.body.delivery || '').trim() || null,
      appointment && !isNaN(appointment) ? appointment : null,
-     num(req.body.rate), num(req.body.prepull), num(req.body.overweight), num(req.body.fsc),
+     num(req.body.rate), num(req.body.prepull), num(req.body.reefer), num(req.body.detention),
+     num(req.body.overweight), num(req.body.fsc),
      num(req.body.miles), req.body.status === 'confirmed' ? 'confirmed' : 'pending',
      (req.body.notes || '').trim() || null, req.params.id]
   );
   res.redirect('/loads');
+});
+
+// Advance the execution progress by one step:
+// 예정(scheduled) → 픽업 완료(picked) → 배송 완료(delivered) → 반납 완료(returned).
+// A driver may only advance their own loads.
+router.post('/:id/progress', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
+  if (!existing.rows.length) return res.redirect('/loads');
+  if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+  const next = nextProgress(existing.rows[0].progress);
+  await query('UPDATE loads SET progress = $1 WHERE id = $2', [next, req.params.id]);
+  res.redirect(req.get('Referrer') || '/');
 });
 
 router.post('/:id/confirm', requireLogin, async (req, res) => {

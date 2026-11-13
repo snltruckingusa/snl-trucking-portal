@@ -47,9 +47,11 @@ router.post('/upload', requireLogin, upload.single('file'), async (req, res) => 
   const scope = scopedDriverId(req);
   const driver_id = scope || parseInt(req.body.driver_id, 10);
   if (!driver_id || !req.file) return res.redirect('/documents');
+  const expiresOn = req.body.expires_on && /^\d{4}-\d{2}-\d{2}$/.test(req.body.expires_on)
+    ? req.body.expires_on : null;
   await query(
-    'INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes) VALUES ($1,$2,$3,$4,$5,$6)',
-    [driver_id, req.body.category || 'other', req.file.filename, req.file.originalname, req.file.mimetype, req.file.size]
+    'INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [driver_id, req.body.category || 'other', req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, expiresOn]
   );
   res.redirect('/documents?driver_id=' + driver_id);
 });
