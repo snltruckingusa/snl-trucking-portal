@@ -2,15 +2,10 @@
 <h1>대시보드 / Dashboard</h1>
 
 <% if (isAdmin) { %>
-  <div class="grid">
-    <div class="stat"><div class="label">이번 주 (<%= weekStartISO %> ~ <%= weekEndISO %>) 확정 수입<br>Confirmed revenue</div><div class="value"><%= money(summary.revenue) %></div></div>
-    <div class="stat"><div class="label">이번 주 연료비<br>Fuel this week</div><div class="value"><%= money(fuelCost) %></div></div>
-    <div class="stat"><div class="label">이번 주 입금 (PierLink)<br>Receipts this week</div><div class="value"><%= money(receiptsTotal) %></div></div>
-    <div class="stat"><div class="label">확인 대기 중<br>Pending entries</div><div class="value"><%= summary.pending_n %> 건</div></div>
-  </div>
-
   <div class="card">
-    <h2>확인 대기 중인 운행 / Pending loads</h2>
+    <h2>오늘 확인할 것 / To check today (<%= today %>)</h2>
+
+    <h3>확인 대기 중인 운행 / Pending loads</h3>
     <% if (!pending.length) { %><p class="notice">대기 중인 운행이 없습니다. No pending loads.</p><% } else { %>
     <div class="table-wrap"><table>
       <tr><th>날짜</th><th>기사</th><th>컨테이너</th><th>픽업 → 배송</th><th>금액</th><th></th></tr>
@@ -20,12 +15,44 @@
         <td><%= l.driver_name %></td>
         <td><%= l.container_no || '' %></td>
         <td><%= l.pickup || '' %> → <%= l.delivery || '' %></td>
-        <td class="num"><%= money(Number(l.rate) + Number(l.prepull) + Number(l.overweight) + Number(l.fsc)) %></td>
+        <td class="num"><%= money(loadTotal(l)) %></td>
         <td><a class="btn small" href="/loads?status=pending">확인 / Review</a></td>
       </tr>
       <% }) %>
     </table></div>
     <% } %>
+
+    <h3>오늘 운행 입력이 없는 기사 / No load entered today</h3>
+    <% if (!idleDrivers.length) { %><p class="notice">모든 기사가 오늘 운행을 입력했습니다. All drivers have a load today.</p><% } else { %>
+    <ul class="check-list">
+      <% idleDrivers.forEach(function(d){ %><li><%= d.name %> (#<%= d.truck_number || '' %>)</li><% }) %>
+    </ul>
+    <% } %>
+
+    <h3>서류 만료 임박 (30일 이내) / Documents expiring within 30 days</h3>
+    <% if (!expiringDocs.length) { %><p class="notice">만료 임박 서류가 없습니다. None.</p><% } else { %>
+    <ul class="check-list">
+      <% expiringDocs.forEach(function(doc){ %>
+      <li><%= doc.driver_name %> — <%= doc.original_name %> <span class="badge warn">만료 <%= fmtDate(doc.expires_on) %></span></li>
+      <% }) %>
+    </ul>
+    <% } %>
+
+    <h3>연비 주의 (최근 정산, MPG &lt; 6.0) / Low MPG — latest settlement</h3>
+    <% if (!mpgFlags.length) { %><p class="notice">연비 주의 기사가 없습니다. None.</p><% } else { %>
+    <ul class="check-list">
+      <% mpgFlags.forEach(function(s){ %>
+      <li><%= s.driver_name %> — <%= fmtDate(s.week_start) %> 주 · MPG <%= s.mpg %> <span class="badge flag">연비 개선 필요</span></li>
+      <% }) %>
+    </ul>
+    <% } %>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="label">이번 주 (<%= weekStartISO %> ~ <%= weekEndISO %>) 확정 수입<br>Confirmed revenue</div><div class="value"><%= money(summary.revenue) %></div></div>
+    <div class="stat"><div class="label">이번 주 연료비<br>Fuel this week</div><div class="value"><%= money(fuelCost) %></div></div>
+    <div class="stat"><div class="label">이번 주 입금 (PierLink)<br>Receipts this week</div><div class="value"><%= money(receiptsTotal) %></div></div>
+    <div class="stat"><div class="label">확인 대기 중<br>Pending entries</div><div class="value"><%= summary.pending_n %> 건</div></div>
   </div>
 
   <div class="card">
@@ -42,21 +69,41 @@
 <% } else { %>
   <div class="card">
     <h2><%= driver.name %> (#<%= driver.truck_number || '' %>) — 오늘 / Today (<%= today %>)</h2>
-    <% if (!todayLoads.length) { %><p class="notice">오늘 운행 기록이 없습니다. No loads today.</p><% } else { %>
-    <div class="table-wrap"><table>
-      <tr><th>컨테이너</th><th>픽업 → 배송</th><th>금액</th><th>상태</th></tr>
+
+    <% if (pendingCount > 0) { %><p><span class="badge warn">확인 대기 <%= pendingCount %>건</span> <span class="notice">관리자 확인을 기다리는 운행이 있습니다.</span></p><% } %>
+    <% if (expiringCount > 0) { %><p><span class="badge warn">서류 만료 임박 <%= expiringCount %>건</span> <span class="notice"><a href="/documents">서류 확인하기</a></span></p><% } %>
+
+    <% if (!todayLoads.length) { %>
+      <p class="notice">오늘 로드가 아직 없습니다. No loads yet today.</p>
+      <p><a class="btn" href="/loads">배차 · 티켓 사진 올리기 / Add from dispatch or ticket photo</a></p>
+    <% } else { %>
       <% todayLoads.forEach(function(l){ %>
-      <tr>
-        <td><%= l.container_no || '' %></td>
-        <td><%= l.pickup || '' %> → <%= l.delivery || '' %></td>
-        <td class="num"><%= money(Number(l.rate) + Number(l.prepull) + Number(l.overweight) + Number(l.fsc)) %></td>
-        <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? '확정' : '대기' %></span></td>
-      </tr>
+      <div class="load-card">
+        <div class="lc-meta">컨테이너 / Container: <b><%= l.container_no || '—' %></b>
+          <span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? '확정' : '확인 대기' %></span>
+          <span class="badge progress"><%= PROGRESS_LABELS[l.progress] || l.progress %></span>
+        </div>
+        <div class="lc-route"><%= l.pickup || '?' %> → <%= l.delivery || '?' %></div>
+        <% if (l.appointment) { %><div class="lc-meta">약속 / Appointment: <%= fmtDate(l.appointment) %> <%= new Date(l.appointment).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %></div><% } %>
+        <% if (l.bol_ref) { %><div class="lc-meta">BOL / Ref: <%= l.bol_ref %></div><% } %>
+        <% if (l.notes) { %><div class="lc-meta"><%= l.notes %></div><% } %>
+        <% if (l.progress !== 'returned') { %>
+        <form method="POST" action="/loads/<%= l.id %>/progress" style="margin-top:8px">
+          <button type="submit">다음 단계: <%= l.progress === 'scheduled' ? '픽업 완료' : (l.progress === 'picked' ? '배송 완료' : '반납 완료') %> / Next step</button>
+        </form>
+        <% } else { %>
+        <div class="lc-meta" style="margin-top:8px">✅ 오늘 운행 완료 / Done</div>
+        <% } %>
+      </div>
       <% }) %>
-    </table></div>
     <% } %>
-    <p>오늘 연료: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
-    <p><a class="btn" href="/loads">운행 입력 / Add a load</a> <a class="btn secondary" href="/fuel">연료 입력 / Add fuel</a></p>
+
+    <div class="quick-actions">
+      <a class="btn" href="/loads">배차·티켓 사진 올리기</a>
+      <a class="btn secondary" href="/fuel">주유 입력 / Fuel</a>
+      <a class="btn secondary" href="/dvir">문제 신고 / Report a problem</a>
+    </div>
+    <p class="notice">오늘 연료: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
   </div>
 
   <div class="grid">

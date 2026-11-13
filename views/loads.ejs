@@ -38,6 +38,8 @@
     <div class="form-row">
       <div><label>기본 요금 / Rate ($)</label><input name="rate" type="number" step="0.01" value="0"></div>
       <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="0"></div>
+      <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="0"></div>
+      <div><label>Detention ($)</label><input name="detention" type="number" step="0.01" value="0"></div>
       <div><label>Overweight ($)</label><input name="overweight" type="number" step="0.01" value="0"></div>
       <div><label>FSC ($)</label><input name="fsc" type="number" step="0.01" value="0"></div>
       <div><label>마일 / Miles</label><input name="miles" type="number" step="0.1" value="0"></div>
@@ -66,7 +68,7 @@
   </form>
 
   <div class="table-wrap" style="margin-top:12px"><table>
-    <tr><th>날짜</th><th>기사</th><th>컨테이너 / BOL</th><th>픽업 → 배송</th><th class="num">금액</th><th class="num">마일</th><th>상태</th><th></th></tr>
+    <tr><th>날짜</th><th>기사</th><th>컨테이너 / BOL</th><th>픽업 → 배송</th><th class="num">금액</th><th class="num">마일</th><th>상태</th><th>진행</th><th></th></tr>
     <% loads.forEach(function(l){ %>
     <tr>
       <td><%= fmtDate(l.load_date) %></td>
@@ -74,9 +76,15 @@
       <td><%= l.container_no || '' %><br><span class="notice"><%= l.bol_ref || '' %></span>
         <% if (l.ticket_photo) { %><br><a href="<%= l.ticket_photo %>" target="_blank">사진 / Photo</a><% } %></td>
       <td><%= l.pickup || '' %> → <%= l.delivery || '' %><% if (l.notes) { %><br><span class="notice"><%= l.notes %></span><% } %></td>
-      <td class="num"><%= money(Number(l.rate) + Number(l.prepull) + Number(l.overweight) + Number(l.fsc)) %></td>
+      <td class="num"><%= money(loadTotal(l)) %></td>
       <td class="num"><%= l.miles %></td>
       <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? '확정' : '대기' %></span></td>
+      <td>
+        <span class="badge progress"><%= PROGRESS_LABELS[l.progress] || l.progress %></span>
+        <% if (l.progress !== 'returned' && (isAdmin || scopedDriverId === l.driver_id)) { %>
+        <form class="inline" method="POST" action="/loads/<%= l.id %>/progress"><button class="btn small secondary" type="submit">다음 단계</button></form>
+        <% } %>
+      </td>
       <td>
         <% if (l.status === 'pending') { %>
         <form class="inline" method="POST" action="/loads/<%= l.id %>/confirm"><button class="btn small" type="submit">확정</button></form>

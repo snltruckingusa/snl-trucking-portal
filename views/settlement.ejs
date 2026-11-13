@@ -69,4 +69,40 @@
   </div>
   <% } %>
 </div>
+
+<div class="card">
+  <h2>운행별 명세 / Statement detail (확정 운행만)</h2>
+  <% rows.forEach(function(r){ %>
+    <h3><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)</h3>
+    <% if (!r.loads.length) { %><p class="notice">이번 주 확정 운행이 없습니다. No confirmed loads this week.</p><% } else { %>
+    <div class="table-wrap"><table>
+      <tr><th>날짜</th><th>컨테이너</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
+      <% r.loads.forEach(function(l){ %>
+      <tr>
+        <td><%= fmtDate(l.load_date) %></td>
+        <td><%= l.container_no || '' %></td>
+        <td class="num"><%= money(l.rate) %></td>
+        <td class="num"><%= money(l.prepull) %></td>
+        <td class="num"><%= money(l.reefer) %></td>
+        <td class="num"><%= money(l.detention) %></td>
+        <td class="num"><%= money(l.overweight) %></td>
+        <td class="num"><%= money(l.fsc) %></td>
+        <td class="num"><b><%= money(loadTotal(l)) %></b></td>
+      </tr>
+      <% }) %>
+      <tr>
+        <td colspan="2"><b>합계 / Total</b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.rate); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.prepull); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.reefer); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.detention); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.overweight); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.fsc); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.revenue) %></b></td>
+      </tr>
+    </table></div>
+    <% } %>
+  <% }) %>
+  <p class="notice">명세 합계는 위 요약의 확정 수입(Revenue)과 같습니다. Totals match the confirmed revenue above.</p>
+</div>
 <%- include('partials/footer') %>

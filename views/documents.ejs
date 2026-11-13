@@ -23,6 +23,7 @@
         <% Object.keys(categories).forEach(function(k){ %><option value="<%= k %>"><%= categories[k] %></option><% }) %>
       </select></div>
       <div><label>파일 / File</label><input type="file" name="file" required></div>
+      <div><label>만료일 (선택) / Expires on (optional)</label><input type="date" name="expires_on"></div>
     </div>
     <div style="margin-top:12px"><button type="submit">올리기 / Upload</button></div>
   </form>
@@ -32,12 +33,13 @@
   <h2>서류 목록 / Documents</h2>
   <% if (!docs.length) { %><p class="notice">서류가 없습니다. No documents yet.</p><% } else { %>
   <div class="table-wrap"><table>
-    <tr><th>종류</th><th>파일</th><th>올린 날짜</th><th></th></tr>
+    <tr><th>종류</th><th>파일</th><th>올린 날짜</th><th>만료일</th><th></th></tr>
     <% docs.forEach(function(doc){ %>
     <tr>
       <td><%= categories[doc.category] || doc.category %></td>
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
+      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% if (expiringWithin(doc.expires_on, 30)) { %> <span class="badge warn">임박</span><% } %><% } else { %>—<% } %></td>
       <td>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
       </td>
