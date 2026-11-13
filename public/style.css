@@ -46,8 +46,34 @@ button:hover, .btn:hover { background: #1a3f66; text-decoration: none; }
 .notice { font-size: 13px; color: #555; }
 .table-wrap { overflow-x: auto; }
 .login-card { max-width: 420px; margin: 40px auto; }
+/* ---- Redesign (2026-11): driver tab bar, load cards, quick actions ---- */
+.who-link { color: #cfe3ff; }
+.nav-secondary { margin-top: 4px; font-size: 13px; opacity: .92; }
+.nav-group-label { color: #9db8d6; font-size: 13px; margin-right: 2px; }
+.tabbar { display: flex; gap: 6px; margin-top: 10px; }
+.tabbar a { flex: 1; text-align: center; background: rgba(255,255,255,.12); color: #fff; border-radius: 8px; padding: 8px 4px; font-size: 15px; font-weight: 700; line-height: 1.25; }
+.tabbar a span { font-size: 11px; font-weight: 400; opacity: .8; }
+.tabbar a:hover { background: rgba(255,255,255,.22); text-decoration: none; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.load-card { border: 1px solid #dbe2ea; border-left: 5px solid #0f2a4a; border-radius: 10px; padding: 12px 14px; margin: 10px 0; background: #fbfcfd; }
+.load-card .lc-route { font-size: 16px; font-weight: 700; margin: 2px 0; }
+.load-card .lc-meta { font-size: 13px; color: #555; }
+.badge.progress { background: #e0e7ff; color: #3730a3; }
+.badge.warn { background: #fef3c7; color: #92400e; }
+.check-list { list-style: none; margin: 0; padding: 0; }
+.check-list li { padding: 8px 0; border-bottom: 1px solid #eef1f4; }
+.check-list li:last-child { border-bottom: none; }
+.more-list { list-style: none; margin: 0; padding: 0; }
+.more-list li { border-bottom: 1px solid #eef1f4; }
+.more-list li:last-child { border-bottom: none; }
+.more-list a { display: block; padding: 13px 4px; font-size: 16px; font-weight: 600; color: #1a1a1a; }
+.more-list a:hover { text-decoration: none; background: #f7fafc; }
 @media (max-width: 640px) {
   .container { padding: 12px; }
   table { font-size: 13px; }
   .nav a { font-size: 13px; }
+  /* Driver navigation becomes a fixed bottom tab bar on phones. */
+  body.has-tabbar { padding-bottom: 76px; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; margin: 0; gap: 0; background: #0f2a4a; box-shadow: 0 -2px 10px rgba(0,0,0,.25); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  .tabbar a { background: transparent; border-radius: 6px; }
 }
