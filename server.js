@@ -8,6 +8,7 @@ const express = require('express');
 const session = require('express-session');
 const { seed } = require('./seed');
 const { money, fmtDate, loadTotal, PROGRESS_LABELS, expiringWithin } = require('./lib/helpers');
+const { matchLane } = require('./lib/rates');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,6 +26,7 @@ app.locals.fmtDate = fmtDate;
 app.locals.loadTotal = loadTotal;
 app.locals.PROGRESS_LABELS = PROGRESS_LABELS;
 app.locals.expiringWithin = expiringWithin;
+app.locals.laneFor = matchLane;
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -60,6 +62,7 @@ app.use('/loads', require('./routes/loads'));
 app.use('/fuel', require('./routes/fuel'));
 app.use('/receipts', require('./routes/receipts'));
 app.use('/settlement', require('./routes/settlement'));
+app.use('/invoice', require('./routes/invoice'));
 app.use('/documents', require('./routes/documents'));
 app.use('/dvir', require('./routes/dvir'));
 
