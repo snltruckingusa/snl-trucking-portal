@@ -18,6 +18,8 @@ const {
   weekStart, weekEnd, toISODate, addDays, num, INSURANCE_PER_DAY, LOAD_MONEY_SQL, loadTotal,
 } = require('../lib/helpers');
 const { computeWeekend } = require('../lib/weekend');
+const { effectiveSplitPct } = require('../lib/tenure');
+const { matchLane } = require('../lib/rates');
 
 const router = express.Router();
 
@@ -62,9 +64,46 @@ async function computeWeek(weekStartISO, driverFilter) {
     const gallons = parseFloat(fuel.rows[0].gallons);
     const insurance = daysWorked * INSURANCE_PER_DAY;
     const net = revenue - fuelCost - insurance;
-    const split = num(d.pay_split, 50) / 100;
+    // Tenure ladder split (45/50/55 by hire date; exempt drivers and
+    // drivers without a hire date use their flat pay_split).
+    const splitPct = effectiveSplitPct(d, wsISO);
+    const split = splitPct / 100;
     let driverPay = Math.round(net * split * 100) / 100;
     const mpg = gallons > 0 ? Math.round((miles / gallons) * 100) / 100 : null;
+    // Fuel standard comparison (Eric's awareness chart): standard gallons
+    // per lane vs actual gallons bought, priced at the week's average
+    // $/gal. Shown on the statement so the driver sees his own numbers.
+    let stdGallons = 0, stdMatched = 0;
+    for (const l of loadRows.rows) {
+      const lane = matchLane(l.delivery);
+      if (lane && lane.gallons) { stdGallons += lane.gallons; stdMatched += 1; }
+    }
+    const stdComplete = loadRows.rows.length > 0 && stdMatched === loadRows.rows.length;
+    let fuelStd = null;
+    if (stdComplete && stdGallons > 0 && gallons > 0) {
+      const excessGal = Math.round((gallons - stdGallons) * 100) / 100;
+      const avgPrice = fuelCost / gallons;
+      const excessCost = Math.round(excessGal * avgPrice * 100) / 100;
+      fuelStd = {
+        stdGallons, excessGal, excessCost,
+        driverShare: Math.round(excessCost * split * 100) / 100,
+      };
+    }
+    // Two-week rolling MPG (fill-timing noise makes single weeks jump).
+    const prevWsISO = toISODate(addDays(ws, -7));
+    const prevFuel = await query(
+      `SELECT COALESCE(SUM(gallons),0) AS gallons FROM fuel
+       WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date < $3`,
+      [d.id, prevWsISO, wsISO]
+    );
+    const prevLoads = await query(
+      `SELECT COALESCE(SUM(miles),0) AS miles FROM loads WHERE driver_id = $1
+         AND status = 'confirmed' AND load_date >= $2 AND load_date < $3`,
+      [d.id, prevWsISO, wsISO]
+    );
+    const twoGal = gallons + parseFloat(prevFuel.rows[0].gallons);
+    const twoMiles = miles + parseFloat(prevLoads.rows[0].miles);
+    const mpg2w = twoGal > 0 ? Math.round((twoMiles / twoGal) * 100) / 100 : null;
     const saved = await query(
       'SELECT * FROM settlements WHERE week_start = $1 AND driver_id = $2',
       [wsISO, d.id]
@@ -105,7 +144,8 @@ async function computeWeek(weekStartISO, driverFilter) {
     const companyNet = Math.round((net - driverPay) * 100) / 100;
     rows.push({
       driver: d, revenue, fuelCost, insurance, net, driverPay, companyNet,
-      miles, gallons, mpg, daysWorked,
+      miles, gallons, mpg, mpg2w, daysWorked,
+      splitPct, fuelStd,
       loads: loadRows.rows,
       mpgFlag: mpg !== null && mpg < 6.0,
       saved: savedRow,
@@ -131,6 +171,11 @@ async function computeWeek(weekStartISO, driverFilter) {
      ${driverFilter ? 'AND driver_id = $3' : ''}`,
     driverFilter ? [wsISO, weISO, driverFilter] : [wsISO, weISO]
   );
+  const pendingDet = await query(
+    `SELECT COUNT(*) AS n FROM loads WHERE detention_status = 'pending' AND load_date >= $1 AND load_date <= $2
+     ${driverFilter ? 'AND driver_id = $3' : ''}`,
+    driverFilter ? [wsISO, weISO, driverFilter] : [wsISO, weISO]
+  );
 
   return {
     weekStart: ws, weekEnd: we, weekStartISO: wsISO, weekEndISO: weISO,
@@ -138,6 +183,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     receiptsTotal: parseFloat(receipts.rows[0].total),
     receiptsCount: parseInt(receipts.rows[0].n, 10),
     pendingCount: parseInt(pending.rows[0].n, 10),
+    pendingDetentionCount: parseInt(pendingDet.rows[0].n, 10),
   };
 }
 
@@ -161,17 +207,18 @@ router.post('/close', requireLogin, requireAdmin, async (req, res) => {
   for (const r of data.rows) {
     await query(
       `INSERT INTO settlements (week_start, driver_id, revenue, fuel_cost, insurance, net,
-         driver_pay, company_net, miles, gallons, mpg, status, closed_at, weekend_applied, weekend_net)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'closed', NOW(), $12, $13)
+         driver_pay, company_net, miles, gallons, mpg, status, closed_at, weekend_applied, weekend_net, split_applied)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'closed', NOW(), $12, $13, $14)
        ON CONFLICT (week_start, driver_id) DO UPDATE SET
          revenue=EXCLUDED.revenue, fuel_cost=EXCLUDED.fuel_cost, insurance=EXCLUDED.insurance,
          net=EXCLUDED.net, driver_pay=EXCLUDED.driver_pay, company_net=EXCLUDED.company_net,
          miles=EXCLUDED.miles, gallons=EXCLUDED.gallons, mpg=EXCLUDED.mpg,
          status='closed', closed_at=NOW(),
-         weekend_applied=EXCLUDED.weekend_applied, weekend_net=EXCLUDED.weekend_net`,
+         weekend_applied=EXCLUDED.weekend_applied, weekend_net=EXCLUDED.weekend_net,
+         split_applied=EXCLUDED.split_applied`,
       [data.weekStartISO, r.driver.id, r.revenue, r.fuelCost, r.insurance, r.net,
        r.driverPay, r.companyNet, r.miles, r.gallons, r.mpg,
-       !!r.weekendApplied, r.weekend ? r.weekend.weekendNet : 0]
+       !!r.weekendApplied, r.weekend ? r.weekend.weekendNet : 0, r.splitPct]
     );
   }
   res.redirect('/settlement?week=' + week);

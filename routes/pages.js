@@ -13,6 +13,40 @@ const {
 
 const router = express.Router();
 
+// Evidence expectations per progress step — the self-check that lets a
+// driver see his own record is complete (Eric, 2026-11-14).
+const STAGE_LABELS = { load_out: '로드아웃 티켓', pod: 'POD', empty_in: '엠티인 티켓' };
+const EXPECTED_BY_PROGRESS = {
+  scheduled: [],
+  picked: ['load_out'],
+  delivered: ['load_out', 'pod'],
+  returned: ['load_out', 'pod', 'empty_in'],
+};
+
+async function evidenceCounts(loadIds) {
+  const map = {};
+  if (!loadIds.length) return map;
+  const r = await query(
+    'SELECT load_id, stage, COUNT(*) AS n FROM load_evidence WHERE load_id = ANY($1) GROUP BY load_id, stage',
+    [loadIds]
+  );
+  for (const row of r.rows) {
+    if (!map[row.load_id]) map[row.load_id] = {};
+    map[row.load_id][row.stage] = parseInt(row.n, 10);
+  }
+  return map;
+}
+
+function missingFor(load, counts) {
+  const expected = EXPECTED_BY_PROGRESS[load.progress] || [];
+  return expected.filter(st => {
+    if ((counts[load.id] || {})[st]) return false;
+    // A legacy creation-time ticket photo counts as the first evidence.
+    if (st === 'load_out' && load.ticket_photo) return false;
+    return true;
+  });
+}
+
 router.get('/', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);
   const today = toISODate(new Date());
@@ -51,6 +85,18 @@ router.get('/', requireLogin, async (req, res) => {
       [lastWsISO, scope]
     );
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
+    // Evidence self-check: recent loads (this + last week, plus anything
+    // not yet returned) and what proof is still missing for each.
+    const recentLoads = await query(
+      `SELECT * FROM loads WHERE driver_id = $1
+         AND (load_date >= $2 OR progress <> 'returned')
+       ORDER BY load_date DESC LIMIT 30`,
+      [scope, lastWsISO]
+    );
+    const counts = await evidenceCounts(recentLoads.rows.map(l => l.id));
+    const evidenceMissing = recentLoads.rows
+      .map(l => ({ load: l, missing: missingFor(l, counts) }))
+      .filter(x => x.missing.length);
     return res.render('dashboard', {
       isAdmin: false, driver,
       today, todayLoads: todayLoads.rows, todayFuel: todayFuel.rows[0],
@@ -58,6 +104,7 @@ router.get('/', requireLogin, async (req, res) => {
       expiringCount: parseInt(expiringOwn.rows[0].n, 10),
       thisWeek: thisWeek.rows[0] || null, lastWeek: lastWeek.rows[0] || null,
       weekStartISO: wsISO, weekEndISO: weISO, lastWeekStartISO: lastWsISO, lastWeekEndISO: lastWeISO,
+      evidenceMissing, stageLabels: STAGE_LABELS,
     });
   }
 
@@ -100,6 +147,16 @@ router.get('/', requireLogin, async (req, res) => {
      WHERE s.mpg IS NOT NULL AND s.mpg < 6.0
      ORDER BY d.name`
   );
+  const recentAll = await query(
+    `SELECT l.*, d.name AS driver_name FROM loads l JOIN drivers d ON d.id = l.driver_id
+     WHERE l.load_date >= CURRENT_DATE - 21 AND l.progress IN ('picked', 'delivered', 'returned')
+     ORDER BY l.load_date DESC LIMIT 60`
+  );
+  const allCounts = await evidenceCounts(recentAll.rows.map(l => l.id));
+  const missingEvidence = recentAll.rows
+    .map(l => ({ load: l, driver_name: l.driver_name, missing: missingFor(l, allCounts) }))
+    .filter(x => x.missing.length)
+    .slice(0, 20);
   const drivers = await query("SELECT * FROM drivers WHERE active = TRUE ORDER BY name");
   return res.render('dashboard', {
     isAdmin: true,
@@ -109,6 +166,7 @@ router.get('/', requireLogin, async (req, res) => {
     receiptsTotal: parseFloat(receipts.rows[0].total),
     pending: pending.rows, drivers: drivers.rows,
     idleDrivers: idleDrivers.rows, expiringDocs: expiringDocs.rows, mpgFlags: mpgFlags.rows,
+    missingEvidence, stageLabels: STAGE_LABELS,
   });
 });
 
