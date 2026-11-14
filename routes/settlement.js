@@ -15,8 +15,9 @@ const express = require('express');
 const { query } = require('../db');
 const {
   requireLogin, requireAdmin, scopedDriverId, isAdmin,
-  weekStart, weekEnd, toISODate, addDays, num, INSURANCE_PER_DAY, LOAD_MONEY_SQL,
+  weekStart, weekEnd, toISODate, addDays, num, INSURANCE_PER_DAY, LOAD_MONEY_SQL, loadTotal,
 } = require('../lib/helpers');
+const { computeWeekend } = require('../lib/weekend');
 
 const router = express.Router();
 
@@ -62,19 +63,53 @@ async function computeWeek(weekStartISO, driverFilter) {
     const insurance = daysWorked * INSURANCE_PER_DAY;
     const net = revenue - fuelCost - insurance;
     const split = num(d.pay_split, 50) / 100;
-    const driverPay = Math.round(net * split * 100) / 100;
-    const companyNet = Math.round((net - driverPay) * 100) / 100;
+    let driverPay = Math.round(net * split * 100) / 100;
     const mpg = gallons > 0 ? Math.round((miles / gallons) * 100) / 100 : null;
     const saved = await query(
       'SELECT * FROM settlements WHERE week_start = $1 AND driver_id = $2',
       [wsISO, d.id]
     );
+    // Weekend (Sat/Sun) 70% rule: per-day nets, auto condition from work
+    // records (confirmed load on every Mon-Fri of this week and next).
+    const fuelByDay = await query(
+      `SELECT fuel_date::text AS d, COALESCE(SUM(cost),0) AS c FROM fuel
+       WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3 GROUP BY fuel_date`,
+      [d.id, wsISO, weISO]
+    );
+    const fuelMap = {};
+    fuelByDay.rows.forEach(r => { fuelMap[r.d] = parseFloat(r.c); });
+    const revMap = {};
+    loadRows.rows.forEach(l => {
+      const k = toISODate(new Date(l.load_date));
+      revMap[k] = (revMap[k] || 0) + loadTotal(l);
+    });
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) weekDates.push(toISODate(addDays(ws, i)));
+    const dayList = weekDates.map(date => ({
+      date, revenue: revMap[date] || 0, fuel: fuelMap[date] || 0, hasLoad: date in revMap,
+    }));
+    const nextWsISO = toISODate(addDays(ws, 7));
+    const nextWeISO = toISODate(addDays(ws, 13));
+    const nextLoads = await query(
+      `SELECT DISTINCT load_date::text AS d FROM loads WHERE driver_id = $1
+         AND status = 'confirmed' AND load_date >= $2 AND load_date <= $3`,
+      [d.id, nextWsISO, nextWeISO]
+    );
+    const weekend = computeWeekend({
+      days: dayList, weekDates,
+      nextWeekLoadDates: nextLoads.rows.map(r => r.d), split,
+    });
+    const savedRow = saved.rows[0] || null;
+    const weekendApplied = !!(savedRow && savedRow.weekend_applied && weekend.conditionMet && weekend.hasWeekend);
+    if (weekendApplied) driverPay = weekend.adjustedPay;
+    const companyNet = Math.round((net - driverPay) * 100) / 100;
     rows.push({
       driver: d, revenue, fuelCost, insurance, net, driverPay, companyNet,
       miles, gallons, mpg, daysWorked,
       loads: loadRows.rows,
       mpgFlag: mpg !== null && mpg < 6.0,
-      saved: saved.rows[0] || null,
+      saved: savedRow,
+      weekend, weekendApplied,
     });
   }
 
@@ -126,15 +161,17 @@ router.post('/close', requireLogin, requireAdmin, async (req, res) => {
   for (const r of data.rows) {
     await query(
       `INSERT INTO settlements (week_start, driver_id, revenue, fuel_cost, insurance, net,
-         driver_pay, company_net, miles, gallons, mpg, status, closed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'closed', NOW())
+         driver_pay, company_net, miles, gallons, mpg, status, closed_at, weekend_applied, weekend_net)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'closed', NOW(), $12, $13)
        ON CONFLICT (week_start, driver_id) DO UPDATE SET
          revenue=EXCLUDED.revenue, fuel_cost=EXCLUDED.fuel_cost, insurance=EXCLUDED.insurance,
          net=EXCLUDED.net, driver_pay=EXCLUDED.driver_pay, company_net=EXCLUDED.company_net,
          miles=EXCLUDED.miles, gallons=EXCLUDED.gallons, mpg=EXCLUDED.mpg,
-         status='closed', closed_at=NOW()`,
+         status='closed', closed_at=NOW(),
+         weekend_applied=EXCLUDED.weekend_applied, weekend_net=EXCLUDED.weekend_net`,
       [data.weekStartISO, r.driver.id, r.revenue, r.fuelCost, r.insurance, r.net,
-       r.driverPay, r.companyNet, r.miles, r.gallons, r.mpg]
+       r.driverPay, r.companyNet, r.miles, r.gallons, r.mpg,
+       !!r.weekendApplied, r.weekend ? r.weekend.weekendNet : 0]
     );
   }
   res.redirect('/settlement?week=' + week);
@@ -147,6 +184,35 @@ router.post('/reopen', requireLogin, requireAdmin, async (req, res) => {
   } else {
     await query("UPDATE settlements SET status='open', closed_at=NULL WHERE week_start=$1", [week]);
   }
+  res.redirect('/settlement?week=' + week);
+});
+
+// Weekend 70% rule: owner confirms (or cancels) application for one
+// driver-week after reviewing. The flag lives on the settlements row.
+router.post('/weekend-confirm', requireLogin, requireAdmin, async (req, res) => {
+  const { week, driver_id } = req.body;
+  const data = await computeWeek(week, driver_id ? parseInt(driver_id, 10) : null);
+  for (const r of data.rows) {
+    await query(
+      `INSERT INTO settlements (week_start, driver_id, revenue, fuel_cost, insurance, net,
+         driver_pay, company_net, miles, gallons, mpg, status, weekend_applied, weekend_net)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'open', TRUE, $12)
+       ON CONFLICT (week_start, driver_id) DO UPDATE SET
+         weekend_applied = TRUE, weekend_net = EXCLUDED.weekend_net`,
+      [data.weekStartISO, r.driver.id, r.revenue, r.fuelCost, r.insurance, r.net,
+       r.driverPay, r.companyNet, r.miles, r.gallons, r.mpg,
+       r.weekend ? r.weekend.weekendNet : 0]
+    );
+  }
+  res.redirect('/settlement?week=' + week);
+});
+
+router.post('/weekend-unconfirm', requireLogin, requireAdmin, async (req, res) => {
+  const { week, driver_id } = req.body;
+  await query(
+    'UPDATE settlements SET weekend_applied = FALSE WHERE week_start = $1 AND driver_id = $2',
+    [week, parseInt(driver_id, 10)]
+  );
   res.redirect('/settlement?week=' + week);
 });
 

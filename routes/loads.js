@@ -217,6 +217,18 @@ router.post('/:id/confirm', requireLogin, async (req, res) => {
   res.redirect('/loads');
 });
 
+// Delete confirmation page (no JS dialog, so it works everywhere).
+router.get('/:id/delete-form', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const r = await query(
+    `SELECT l.*, d.name AS driver_name FROM loads l JOIN drivers d ON d.id = l.driver_id WHERE l.id = $1`,
+    [req.params.id]
+  );
+  if (!r.rows.length) return res.redirect('/loads');
+  if (scope && r.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+  res.render('load-delete', { load: r.rows[0], isAdmin: isAdmin(req) });
+});
+
 router.post('/:id/delete', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
