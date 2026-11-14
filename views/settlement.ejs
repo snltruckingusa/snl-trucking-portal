@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Settlement' }) %>
 <h1>주간 정산 / Weekly Settlement</h1>
-<p class="notice">주: 일요일 ~ 토요일 (Sun–Sat). 정산식: 기사 급여 = (확정 수입 − 연료 − 보험 $100/일) × 50%. 금요일 마감 (Friday close-out). 정산은 1주일 후 지급됩니다 (1 week in arrears).<br>
+<p class="notice">주: 일요일 ~ 토요일 (Sun–Sat). 정산식: 기사 급여 = (확정 수입 − 연료 − 보험 $100/일) × 적용 비율. 비율은 근속 단계 (첫 3개월 45% → 50% → 1년 후 55%, 예외 기사는 고정 비율). 금요일 마감 (Friday close-out). 정산은 1주일 후 지급됩니다 (1 week in arrears).<br>
 주말 규정: 토·일 운행 건은 순액의 70%를 기사에게 지급합니다. 조건 — 해당 주와 다음 주 월~금 전일 운행 (시스템이 운행 기록으로 자동 판정). 최종 적용은 관리자 검수 확정 후 반영됩니다. Weekend loads pay 70% when the 2-week full-attendance condition is met and the owner confirms.</p>
 
 <div class="card">
@@ -21,6 +21,9 @@
   <div class="stat"><div class="label">회사 순이익 / Company net</div><div class="value"><%= money(totals.companyNet) %></div></div>
   <div class="stat"><div class="label">이번 주 입금 / Receipts</div><div class="value"><%= money(receiptsTotal) %> (<%= receiptsCount %>건)</div></div>
   <div class="stat"><div class="label">확인 대기 / Pending entries</div><div class="value"><%= pendingCount %> 건</div></div>
+  <% if (typeof pendingDetentionCount !== 'undefined' && pendingDetentionCount > 0) { %>
+  <div class="stat"><div class="label">디텐션 검수 대기 / Detention claims</div><div class="value"><%= pendingDetentionCount %> 건</div></div>
+  <% } %>
 </div>
 
 <div class="card">
@@ -28,7 +31,9 @@
     <tr><th>기사 / Driver</th><th class="num">수입<br>Revenue</th><th class="num">연료<br>Fuel</th><th class="num">보험<br>Insurance</th><th class="num">순이익<br>Net</th><th class="num">기사 급여<br>Driver pay</th><th class="num">회사<br>Company</th><th class="num">마일 / 갤런</th><th class="num">MPG</th><th>상태</th><th></th></tr>
     <% rows.forEach(function(r){ %>
     <tr class="<%= r.saved && r.saved.status === 'closed' ? 'closed' : '' %>">
-      <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %>일 근무 · <%= r.driver.pay_split %>%</span></td>
+      <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %>일 근무 · <%= r.splitPct %>% 적용</span>
+        <% if (r.fuelStd) { %><br><span class="notice">연료 표준 <%= r.fuelStd.stdGallons %> gal 대비 <% if (r.fuelStd.excessGal >= 0) { %>+<%= r.fuelStd.excessGal %> gal (<%= money(r.fuelStd.excessCost) %>) · 본인 부담 <%= money(r.fuelStd.driverShare) %><% } else { %><%= r.fuelStd.excessGal %> gal 절약 (<%= money(-r.fuelStd.excessCost) %>)<% } %></span><% } %>
+      </td>
       <td class="num"><%= money(r.revenue) %></td>
       <td class="num"><%= money(r.fuelCost) %></td>
       <td class="num"><%= money(r.insurance) %></td>
@@ -46,6 +51,7 @@
           <%= r.mpg %>
           <% if (r.mpgFlag) { %><br><span class="badge flag">연비 개선 필요</span><% } else { %><br><span class="badge good">양호</span><% } %>
         <% } %>
+        <% if (r.mpg2w !== null && r.mpg2w !== undefined) { %><br><span class="notice">2주 평균 <%= r.mpg2w %></span><% } %>
       </td>
       <td>
         <% if (r.saved) { %><span class="badge <%= r.saved.status %>"><%= r.saved.status === 'closed' ? '마감' : '진행중' %></span><% } else { %><span class="badge open">미마감</span><% } %>
@@ -96,7 +102,7 @@
         <td class="num"><%= money(l.rate) %></td>
         <td class="num"><%= money(l.prepull) %></td>
         <td class="num"><%= money(l.reefer) %></td>
-        <td class="num"><%= money(l.detention) %></td>
+        <td class="num"><%= money(l.detention) %><% if (l.detention_status === 'pending') { %><br><span class="badge warn">디텐션 검수 대기 (미반영)</span><% } else if (l.detention_status === 'rejected') { %><br><span class="badge flag">디텐션 거절 (미반영)</span><% } %></td>
         <td class="num"><%= money(l.overweight) %></td>
         <td class="num"><%= money(l.fsc) %></td>
         <td class="num"><b><%= money(loadTotal(l)) %></b></td>
@@ -107,7 +113,7 @@
         <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.rate); }, 0)) %></b></td>
         <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.prepull); }, 0)) %></b></td>
         <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.reefer); }, 0)) %></b></td>
-        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.detention); }, 0)) %></b></td>
+        <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + ((l.detention_status === 'pending' || l.detention_status === 'rejected') ? 0 : Number(l.detention)); }, 0)) %></b></td>
         <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.overweight); }, 0)) %></b></td>
         <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.fsc); }, 0)) %></b></td>
         <td class="num"><b><%= money(r.revenue) %></b></td>

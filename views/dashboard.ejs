@@ -38,6 +38,15 @@
     </ul>
     <% } %>
 
+    <h3>증빙 누락 (최근 3주) / Missing evidence</h3>
+    <% if (typeof missingEvidence === 'undefined' || !missingEvidence.length) { %><p class="notice">누락된 증빙이 없습니다. None.</p><% } else { %>
+    <ul class="check-list">
+      <% missingEvidence.forEach(function(x){ %>
+      <li><%= x.driver_name %> — <%= fmtDate(x.load.load_date) %> · <%= x.load.delivery || '' %> (<%= x.load.container_no || '—' %>): <%= x.missing.map(function(s){ return stageLabels[s]; }).join(', ') %> 없음</li>
+      <% }) %>
+    </ul>
+    <% } %>
+
     <h3>연비 주의 (최근 정산, MPG &lt; 6.0) / Low MPG — latest settlement</h3>
     <% if (!mpgFlags.length) { %><p class="notice">연비 주의 기사가 없습니다. None.</p><% } else { %>
     <ul class="check-list">
@@ -88,8 +97,10 @@
         <% if (l.bol_ref) { %><div class="lc-meta">BOL / Ref: <%= l.bol_ref %></div><% } %>
         <% if (l.notes) { %><div class="lc-meta"><%= l.notes %></div><% } %>
         <% if (l.progress !== 'returned') { %>
-        <form method="POST" action="/loads/<%= l.id %>/progress" style="margin-top:8px">
-          <button type="submit">다음 단계: <%= l.progress === 'scheduled' ? '픽업 완료' : (l.progress === 'picked' ? '배송 완료' : '반납 완료') %> / Next step</button>
+        <form method="POST" action="/loads/<%= l.id %>/progress" enctype="multipart/form-data" style="margin-top:8px">
+          <div><label><%= l.progress === 'scheduled' ? '로드아웃 티켓 사진 (선택)' : (l.progress === 'picked' ? 'POD 사진 (선택)' : '엠티인 티켓 사진 (선택)') %> / Ticket photo (optional)</label>
+          <input type="file" name="evidence" accept="image/*"></div>
+          <button type="submit" style="margin-top:6px">다음 단계: <%= l.progress === 'scheduled' ? '픽업 완료' : (l.progress === 'picked' ? '배송 완료' : '반납 완료') %> / Next step</button>
         </form>
         <% } else { %>
         <div class="lc-meta" style="margin-top:8px">✅ 오늘 운행 완료 / Done</div>
@@ -104,6 +115,22 @@
       <a class="btn secondary" href="/dvir">문제 신고 / Report a problem</a>
     </div>
     <p class="notice">오늘 연료: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
+  </div>
+
+  <div class="card">
+    <h2>내 증빙 / My evidence</h2>
+    <% if (typeof evidenceMissing === 'undefined' || !evidenceMissing.length) { %>
+      <p>✅ 최근 운행의 증빙이 모두 올라와 있습니다. All recent evidence is in — nothing missing.</p>
+    <% } else { %>
+      <p class="notice">아래 운행은 증빙이 빠져 있습니다. 티켓을 올리면 정산·청구가 막히지 않습니다.</p>
+      <ul class="check-list">
+        <% evidenceMissing.forEach(function(x){ %>
+        <li><%= fmtDate(x.load.load_date) %> · <%= x.load.delivery || '' %> (<%= x.load.container_no || '컨테이너 미입력' %>) —
+          빠진 증빙: <b><%= x.missing.map(function(s){ return stageLabels[s]; }).join(', ') %></b>
+          <a class="btn small" href="/loads">올리기</a></li>
+        <% }) %>
+      </ul>
+    <% } %>
   </div>
 
   <div class="grid">

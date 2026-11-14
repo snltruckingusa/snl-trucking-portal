@@ -9,20 +9,25 @@
       <div><label>이름 / Name</label><input name="name" required></div>
       <div><label>트럭 번호 / Truck #</label><input name="truck_number" placeholder="100"></div>
       <div><label>정산 비율 % / Pay split %</label><input name="pay_split" type="number" step="0.01" value="50"></div>
+      <div><label>입사일 / Hire date</label><input name="hire_date" type="date"></div>
+      <div><label style="display:inline"><input type="checkbox" name="ladder_exempt"> 근속 단계 예외 (처음부터 고정 비율) / Ladder exempt</label></div>
     </div>
     <div style="margin-top:12px"><button type="submit">추가 / Add</button></div>
   </form>
+  <p class="notice">근속 단계: 입사 후 첫 3개월 45% → 50% → 1년 후 55% (입사일이 입력된 기사에게 자동 적용). 예외 체크 시 입력한 비율로 고정됩니다. Tenure ladder applies automatically when a hire date is set.</p>
 </div>
 
 <div class="card">
   <div class="table-wrap"><table>
-    <tr><th>이름</th><th>트럭</th><th>정산 %</th><th>상태</th><th>수정</th><th></th></tr>
+    <tr><th>이름</th><th>트럭</th><th>정산 % (설정/현재 적용)</th><th>입사일 / 예외</th><th>상태</th><th>수정</th><th></th></tr>
     <% drivers.forEach(function(d){ %>
     <tr>
       <form method="POST" action="/drivers/<%= d.id %>/edit">
         <td><input name="name" value="<%= d.name %>" required></td>
         <td><input name="truck_number" value="<%= d.truck_number || '' %>"></td>
-        <td><input name="pay_split" type="number" step="0.01" value="<%= d.pay_split %>"></td>
+        <td><input name="pay_split" type="number" step="0.01" value="<%= d.pay_split %>" style="width:70px"> / <b><%= d.current_split %>%</b></td>
+        <td><input name="hire_date" type="date" value="<%= d.hire_date ? fmtDate(d.hire_date) : '' %>">
+          <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> 예외</label></td>
         <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> 활동중</label></td>
         <td><button class="btn small" type="submit">저장 / Save</button></td>
       </form>

@@ -47,6 +47,8 @@
     </div>
     <div style="margin-top:12px"><button type="submit">저장 / Save load</button></div>
   </form>
+  <p class="notice">요금·FSC·마일을 비워 두면 배송 도시의 요금표 기본값이 자동으로 채워집니다 (제안값 — 디스패처가 건별로 정한 실제 금액이 항상 우선합니다). 디텐션을 기사가 입력하면 검수 대기 상태가 되어, 관리자 승인 후 정산에 반영됩니다.<br>
+  Leave rate/FSC/miles blank to prefill the lane chart defaults (suggestions only — the per-load actual always governs). Driver-entered detention stays pending until the owner approves it.</p>
 </div>
 
 <div class="card">
@@ -74,10 +76,15 @@
       <td><%= fmtDate(l.load_date) %></td>
       <td><%= l.driver_name %> (#<%= l.truck_number || '' %>)</td>
       <td><%= l.container_no || '' %><br><span class="notice"><%= l.bol_ref || '' %></span>
-        <% if (l.ticket_photo) { %><br><a href="<%= l.ticket_photo %>" target="_blank">사진 / Photo</a><% } %></td>
+        <% if (l.ticket_photo) { %><br><a href="<%= l.ticket_photo %>" target="_blank">사진 / Photo</a><% } %>
+        <% var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null; %>
+        <% if (ev) { %><br><span class="notice">증빙: 로드아웃 <%= ev.load_out ? '✓' : '—' %> · POD <%= ev.pod ? '✓' : '—' %> · 엠티인 <%= ev.empty_in ? '✓' : '—' %></span>
+        <% if (ev.ow) { %><br><span class="badge flag">티켓 O/W 초과 감지</span><% } %><% } %>
+        <% if (l.detention_status === 'pending') { %><br><span class="badge warn">디텐션 검수 대기 <%= money(l.detention) %></span><% } %>
+      </td>
       <td><%= l.pickup || '' %> → <%= l.delivery || '' %><% if (l.notes) { %><br><span class="notice"><%= l.notes %></span><% } %></td>
       <td class="num"><%= money(loadTotal(l)) %></td>
-      <td class="num"><%= l.miles %></td>
+      <td class="num"><%= l.miles %><% var lane = laneFor(l.delivery); if (lane && lane.gallons) { %><br><span class="notice">기준 <%= lane.gallons %> gal</span><% } %></td>
       <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? '확정' : '대기' %></span></td>
       <td>
         <span class="badge progress"><%= PROGRESS_LABELS[l.progress] || l.progress %></span>
@@ -116,6 +123,43 @@
           </form>
         </details>
         <% } %>
+        <details style="margin-top:6px">
+          <summary class="btn small secondary">증빙 / Evidence</summary>
+          <div style="min-width:280px;margin-top:8px;text-align:left">
+            <% if (ev && ev.items.length) { %>
+            <ul class="check-list">
+              <% ev.items.forEach(function(it){ %>
+              <li><a href="/loads/evidence/<%= it.id %>/photo" target="_blank"><%= it.stage === 'load_out' ? '로드아웃 티켓' : it.stage === 'pod' ? 'POD' : it.stage === 'empty_in' ? '엠티인 티켓' : it.stage === 'detention' ? '디텐션 근거' : '기타' %></a>
+                <span class="notice"><%= new Date(it.created_at).toLocaleString() %></span>
+                <% if (it.extracted && it.extracted.cargo_wt) { %><br><span class="notice">CARGO <%= Math.round(it.extracted.cargo_wt).toLocaleString() %> lb<% if (it.extracted.ow_limit) { %> / 기준 <%= it.extracted.ow_limit.toLocaleString() %> lb<% } %><% if (it.extracted.overweight) { %> · <b>O/W 초과</b><% } %></span><% } %>
+              </li>
+              <% }) %>
+            </ul>
+            <% } else { %><p class="notice">올라온 증빙이 없습니다. No evidence yet.</p><% } %>
+            <form method="POST" action="/loads/<%= l.id %>/evidence" enctype="multipart/form-data" style="margin-top:8px">
+              <div><label>종류 / Type</label><select name="stage">
+                <option value="load_out">로드아웃 티켓 / Load out EIR</option>
+                <option value="pod">POD (배송 완료) / POD</option>
+                <option value="empty_in">엠티인 티켓 / Empty in EIR</option>
+                <option value="other">기타 / Other</option>
+              </select></div>
+              <div><label>사진 / Photo</label><input type="file" name="photo" accept="image/*" required></div>
+              <div style="margin-top:6px"><button class="btn small" type="submit">증빙 올리기 / Upload</button></div>
+            </form>
+            <form method="POST" action="/loads/<%= l.id %>/detention" enctype="multipart/form-data" style="margin-top:10px">
+              <div><label>디텐션 청구 ($) — 디스패처 확정 메시지 기준 / Detention claim</label>
+              <input name="amount" type="number" step="0.01" min="0" placeholder="50"></div>
+              <div><label>근거 사진 (디스패처 메시지) / Evidence photo</label><input type="file" name="photo" accept="image/*"></div>
+              <div style="margin-top:6px"><button class="btn small secondary" type="submit">디텐션 청구 / Claim detention</button></div>
+            </form>
+            <% if (isAdmin && l.detention_status === 'pending') { %>
+            <div style="margin-top:8px">
+              <form class="inline" method="POST" action="/loads/<%= l.id %>/detention-approve"><button class="btn small" type="submit">디텐션 승인 / Approve</button></form>
+              <form class="inline" method="POST" action="/loads/<%= l.id %>/detention-reject"><button class="btn small danger" type="submit">거절 / Reject</button></form>
+            </div>
+            <% } %>
+          </div>
+        </details>
       </td>
     </tr>
     <% }) %>
