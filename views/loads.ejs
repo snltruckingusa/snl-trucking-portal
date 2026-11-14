@@ -89,7 +89,33 @@
         <% if (l.status === 'pending') { %>
         <form class="inline" method="POST" action="/loads/<%= l.id %>/confirm"><button class="btn small" type="submit">확정</button></form>
         <% } %>
-        <form class="inline" method="POST" action="/loads/<%= l.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="btn small danger" type="submit">삭제</button></form>
+        <a class="btn small danger" href="/loads/<%= l.id %>/delete-form">삭제</a>
+        <% if (isAdmin) { %>
+        <details style="margin-top:6px">
+          <summary class="btn small secondary">수정 / Edit</summary>
+          <form method="POST" action="/loads/<%= l.id %>/edit" style="min-width:280px;margin-top:8px;text-align:left">
+            <div><label>날짜 / Date</label><input type="date" name="load_date" required value="<%= fmtDate(l.load_date) %>"></div>
+            <div><label>컨테이너 / Container #</label><input name="container_no" value="<%= l.container_no || '' %>"></div>
+            <div><label>BOL / Reference</label><input name="bol_ref" value="<%= l.bol_ref || '' %>"></div>
+            <div><label>픽업 / Pickup</label><input name="pickup" value="<%= l.pickup || '' %>"></div>
+            <div><label>배송 / Delivery</label><input name="delivery" value="<%= l.delivery || '' %>"></div>
+            <div><label>약속 / Appointment</label><input type="datetime-local" name="appointment" value="<%= l.appointment ? new Date(l.appointment).toISOString().slice(0,16) : '' %>"></div>
+            <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="<%= l.rate %>"></div>
+            <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="<%= l.prepull %>"></div>
+            <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="<%= l.reefer %>"></div>
+            <div><label>Detention ($)</label><input name="detention" type="number" step="0.01" value="<%= l.detention %>"></div>
+            <div><label>Overweight ($)</label><input name="overweight" type="number" step="0.01" value="<%= l.overweight %>"></div>
+            <div><label>FSC ($)</label><input name="fsc" type="number" step="0.01" value="<%= l.fsc %>"></div>
+            <div><label>마일 / Miles</label><input name="miles" type="number" step="0.1" value="<%= l.miles %>"></div>
+            <div><label>메모 / Notes</label><input name="notes" value="<%= l.notes || '' %>"></div>
+            <div><label>상태 / Status</label><select name="status">
+              <option value="pending" <%= l.status === 'pending' ? 'selected' : '' %>>대기 (Pending)</option>
+              <option value="confirmed" <%= l.status === 'confirmed' ? 'selected' : '' %>>확정 (Confirmed)</option>
+            </select></div>
+            <div style="margin-top:8px"><button class="btn small" type="submit">저장 / Save</button></div>
+          </form>
+        </details>
+        <% } %>
       </td>
     </tr>
     <% }) %>

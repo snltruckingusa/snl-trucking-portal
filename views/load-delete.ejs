@@ -1,0 +1,17 @@
+<%- include('partials/header', { title: 'Delete load' }) %>
+<h1>운행 삭제 / Delete load</h1>
+<div class="card">
+  <p>아래 운행을 삭제할까요? 삭제하면 정산에서도 빠집니다.<br>
+  Delete this load? It will also disappear from settlements.</p>
+  <p>
+    <b><%= fmtDate(load.load_date) %></b> · <%= load.driver_name %> ·
+    <%= load.pickup || '' %> → <%= load.delivery || '' %> ·
+    <b><%= money(loadTotal(load)) %></b> · <%= load.miles %> mi ·
+    <span class="badge <%= load.status %>"><%= load.status === 'confirmed' ? '확정' : '대기' %></span>
+  </p>
+  <form class="inline" method="POST" action="/loads/<%= load.id %>/delete">
+    <button class="btn danger" type="submit">삭제 / Delete</button>
+  </form>
+  <a class="btn secondary" href="/loads">취소 / Cancel</a>
+</div>
+<%- include('partials/footer') %>

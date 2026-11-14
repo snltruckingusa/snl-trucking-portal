@@ -1,10 +1,11 @@
 <%- include('partials/header', { title: 'Settlement' }) %>
 <h1>주간 정산 / Weekly Settlement</h1>
-<p class="notice">주: 월요일 ~ 일요일 (Mon–Sun). 정산식: 기사 급여 = (확정 수입 − 연료 − 보험 $100/일) × 50%. 금요일 마감 (Friday close-out). 정산은 1주일 후 지급됩니다 (1 week in arrears).</p>
+<p class="notice">주: 일요일 ~ 토요일 (Sun–Sat). 정산식: 기사 급여 = (확정 수입 − 연료 − 보험 $100/일) × 50%. 금요일 마감 (Friday close-out). 정산은 1주일 후 지급됩니다 (1 week in arrears).<br>
+주말 규정: 토·일 운행 건은 순액의 70%를 기사에게 지급합니다. 조건 — 해당 주와 다음 주 월~금 전일 운행 (시스템이 운행 기록으로 자동 판정). 최종 적용은 관리자 검수 확정 후 반영됩니다. Weekend loads pay 70% when the 2-week full-attendance condition is met and the owner confirms.</p>
 
 <div class="card">
   <form method="GET" action="/settlement" class="form-row" style="align-items:end">
-    <div><label>주 시작일 (월요일) / Week of (Mon)</label><input type="date" name="week" value="<%= weekStartISO %>"></div>
+    <div><label>주 시작일 (일요일) / Week of (Sun)</label><input type="date" name="week" value="<%= weekStartISO %>"></div>
     <div><button type="submit">조회 / View week</button>
       <a class="btn secondary" href="/settlement?week=<%= prevWeek %>">← 지난주</a>
       <a class="btn secondary" href="/settlement?week=<%= nextWeek %>">다음주 →</a></div>
@@ -32,7 +33,12 @@
       <td class="num"><%= money(r.fuelCost) %></td>
       <td class="num"><%= money(r.insurance) %></td>
       <td class="num"><%= money(r.net) %></td>
-      <td class="num"><b><%= money(r.driverPay) %></b></td>
+      <td class="num"><b><%= money(r.driverPay) %></b>
+        <% if (r.weekend && r.weekend.hasWeekend) { %>
+        <br><span class="notice">주말 순액 <%= money(r.weekend.weekendNet) %> · <%= r.weekend.conditionMet ? '조건 충족' : '조건 미충족' %><% if (r.weekend.conditionMet && !r.weekendApplied) { %> · 70% 적용 시 <%= money(r.weekend.adjustedPay) %><% } %></span>
+        <% if (r.weekendApplied) { %><br><span class="badge good">주말 70% 적용됨</span><% } %>
+        <% } %>
+      </td>
       <td class="num"><%= money(r.companyNet) %></td>
       <td class="num"><%= r.miles %> / <%= r.gallons %></td>
       <td class="num">
@@ -46,6 +52,12 @@
       </td>
       <td>
         <% if (isAdmin) { %>
+          <% if (r.weekend && r.weekend.hasWeekend && r.weekend.conditionMet && !r.weekendApplied && (!r.saved || r.saved.status !== 'closed')) { %>
+          <form class="inline" method="POST" action="/settlement/weekend-confirm"><input type="hidden" name="week" value="<%= weekStartISO %>"><input type="hidden" name="driver_id" value="<%= r.driver.id %>"><button class="btn small" type="submit">주말 70% 확정</button></form>
+          <% } %>
+          <% if (r.weekendApplied && (!r.saved || r.saved.status !== 'closed')) { %>
+          <form class="inline" method="POST" action="/settlement/weekend-unconfirm"><input type="hidden" name="week" value="<%= weekStartISO %>"><input type="hidden" name="driver_id" value="<%= r.driver.id %>"><button class="btn small secondary" type="submit">주말 적용 취소</button></form>
+          <% } %>
           <% if (!r.saved || r.saved.status !== 'closed') { %>
           <form class="inline" method="POST" action="/settlement/close"><input type="hidden" name="week" value="<%= weekStartISO %>"><input type="hidden" name="driver_id" value="<%= r.driver.id %>"><button class="btn small" type="submit">마감 / Close</button></form>
           <% } else { %>
