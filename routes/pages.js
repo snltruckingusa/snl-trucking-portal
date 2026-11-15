@@ -10,6 +10,7 @@ const {
   requireLogin, scopedDriverId, isAdmin,
   weekStart, weekEnd, toISODate, addDays, LOAD_MONEY_SQL,
 } = require('../lib/helpers');
+const { SAFETY_TOPICS } = require('../lib/safety');
 
 const router = express.Router();
 
@@ -174,8 +175,35 @@ router.get('/more', requireLogin, (req, res) => {
   res.render('more', { isAdmin: isAdmin(req) });
 });
 
-router.get('/safety', requireLogin, (req, res) => {
-  res.render('safety', { isAdmin: isAdmin(req) });
+router.get('/safety', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  let acks = {};
+  let grid = null;
+  if (scope) {
+    const r = await query('SELECT topic, acked_at FROM safety_acks WHERE driver_id = $1', [scope]);
+    r.rows.forEach((row) => { acks[row.topic] = row.acked_at; });
+  } else {
+    const drivers = await query('SELECT id, name FROM drivers WHERE active ORDER BY name');
+    const r = await query('SELECT driver_id, topic, acked_at FROM safety_acks');
+    const byDriver = {};
+    r.rows.forEach((row) => {
+      (byDriver[row.driver_id] = byDriver[row.driver_id] || {})[row.topic] = row.acked_at;
+    });
+    grid = drivers.rows.map((d) => ({ name: d.name, done: byDriver[d.id] || {} }));
+  }
+  res.render('safety', { isAdmin: isAdmin(req), topics: SAFETY_TOPICS, acks, grid });
+});
+
+router.post('/safety/ack', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const topic = String(req.body.topic || '');
+  if (scope && SAFETY_TOPICS.some((t) => t.key === topic)) {
+    await query(
+      'INSERT INTO safety_acks (driver_id, topic) VALUES ($1, $2) ON CONFLICT (driver_id, topic) DO NOTHING',
+      [scope, topic]
+    );
+  }
+  res.redirect('/safety#topic-' + topic);
 });
 
 router.get('/instructions', requireLogin, (req, res) => {
