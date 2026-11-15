@@ -25,7 +25,7 @@
     <h3>No load entered today</h3>
     <% if (!idleDrivers.length) { %><p class="notice">All drivers have a load today.</p><% } else { %>
     <ul class="check-list">
-      <% idleDrivers.forEach(function(d){ %><li><%= d.name %> (#<%= d.truck_number || '' %>)</li><% }) %>
+      <% idleDrivers.forEach(function(d){ var veh = (typeof vehicleMap !== 'undefined' && vehicleMap) ? vehicleMap[String(d.truck_number || '').replace(/#/g, '').trim()] : null; %><li><%= d.name %> (#<%= d.truck_number || '' %><% if (veh && veh.vin) { %> …<%= String(veh.vin).slice(-6) %><% } %>)</li><% }) %>
     </ul>
     <% } %>
 
