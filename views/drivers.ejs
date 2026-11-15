@@ -12,6 +12,10 @@
       <div><label>Hire date</label><input name="hire_date" type="date"></div>
       <div><label>Address</label><input name="address" placeholder="1428 Fern Dr, Macon, GA 31210"></div>
       <div><label>Phone</label><input name="phone" placeholder="478-228-9531"></div>
+      <div><label>Date of birth</label><input name="dob" type="date"></div>
+      <div><label>Email</label><input name="email" placeholder="driver@example.com"></div>
+      <div><label>License (CDL) #</label><input name="license_no"></div>
+      <div><label>License state</label><input name="license_state" placeholder="GA" style="width:70px"></div>
       <div><label style="display:inline"><input type="checkbox" name="ladder_exempt"> Ladder exempt (fixed split from day one)</label></div>
     </div>
     <div style="margin-top:12px"><button type="submit">Add</button></div>
@@ -31,9 +35,13 @@
         <td><input name="hire_date" type="date" value="<%= d.hire_date ? fmtDate(d.hire_date) : '' %>">
           <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> Exempt</label>
           <br><input name="address" value="<%= d.address || '' %>" placeholder="Address" style="width:95%">
-          <br><input name="phone" value="<%= d.phone || '' %>" placeholder="Phone" style="width:95%"></td>
+          <br><input name="phone" value="<%= d.phone || '' %>" placeholder="Phone" style="width:95%">
+          <br><input name="dob" type="date" value="<%= d.dob ? fmtDate(d.dob) : '' %>" title="Date of birth">
+          <input name="email" value="<%= d.email || '' %>" placeholder="Email" style="width:95%">
+          <br><input name="license_no" value="<%= d.license_no || '' %>" placeholder="License (CDL) #" style="width:70%">
+          <input name="license_state" value="<%= d.license_state || '' %>" placeholder="State" style="width:25%"></td>
         <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> Active</label></td>
-        <td><button class="btn small" type="submit">Save</button></td>
+        <td><button class="btn small" type="submit">Save</button><br><a class="btn small" href="/drivers/<%= d.id %>/overview">Overview</a></td>
       </form>
       <td>
         <form class="inline" method="POST" action="/drivers/<%= d.id %>/delete" onsubmit="return confirm('Really delete? A driver with load, fuel, or settlement records cannot be deleted.')">

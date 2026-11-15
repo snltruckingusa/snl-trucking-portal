@@ -14,7 +14,7 @@
     <tr>
       <td><%= vdCategories[doc.category] || doc.category %></td>
       <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
-      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% if (String(doc.expires_on).slice(0,10) < todayISO) { %> <span class="badge flag">Expired</span><% } else if (expiringWithin(doc.expires_on, 45)) { %> <span class="badge warn">Soon</span><% } %><% } else { %>—<% } %></td>
+      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
     </tr>
     <% }) %>
   </table></div>
@@ -109,7 +109,7 @@
     <tr>
       <td><%= vdCategories[doc.category] || doc.category %></td>
       <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
-      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% if (String(doc.expires_on).slice(0,10) < todayISO) { %> <span class="badge flag">Expired</span><% } else if (expiringWithin(doc.expires_on, 45)) { %> <span class="badge warn">Soon</span><% } %><% } else { %>—<% } %></td>
+      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
       <td><form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/delete" onsubmit="return confirm('Delete this truck document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
     </tr>
     <% }) %>

@@ -1,0 +1,91 @@
+<%- include('partials/header', { title: picker ? 'Driver Overview' : 'Overview — ' + driver.name }) %>
+<% if (picker) { %>
+<h1>Driver Overview</h1>
+<p class="notice">One driver, whole picture: profile, document checklist, expiries. Pick a driver.</p>
+<div class="card">
+  <div class="table-wrap"><table>
+    <tr><th>Driver</th><th>Truck</th><th>File</th><th></th></tr>
+    <% drivers.forEach(function(d){ %>
+    <tr>
+      <td><b><%= d.name %></b><% if (!d.active) { %> <span class="badge flag">Inactive</span><% } %></td>
+      <td><%= d.truck_number ? '#' + d.truck_number : '—' %></td>
+      <td><% if (d.missing > 0) { %><span class="badge flag"><%= d.missing %> missing</span> <% } %><%= d.total - d.missing %> of <%= d.total %> on file</td>
+      <td><a class="btn small" href="/drivers/<%= d.id %>/overview">Open overview →</a></td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+<% } else { %>
+<h1><%= driver.name %> <span class="sub">— Driver Overview</span></h1>
+<p>
+  <% if (driver.truck_number) { %><span class="badge ok">Truck #<%= driver.truck_number %></span> <% } %>
+  <% if (driver.active) { %><span class="badge ok">Active</span><% } else { %><span class="badge flag">Inactive</span><% } %>
+  <a class="btn small" href="/drivers/overview">← All drivers</a>
+  <a class="btn small" href="/documents?driver_id=<%= driver.id %>">Open My File folder</a>
+</p>
+
+<div class="card">
+  <h2>Profile</h2>
+  <div class="table-wrap"><table>
+    <tr><th style="width:210px">Date of birth</th><td><%= driver.dob ? fmtDate(driver.dob) : '—' %></td></tr>
+    <tr><th>License (CDL) number</th><td><%= driver.license_no || '—' %><% if (driver.license_state) { %> · <%= driver.license_state %><% } %></td></tr>
+    <tr><th>Phone</th><td><%= driver.phone || '—' %></td></tr>
+    <tr><th>Email</th><td><%= driver.email || '—' %></td></tr>
+    <tr><th>Address</th><td><%= driver.address || '—' %></td></tr>
+    <tr><th>Emergency contact</th><td><%= driver.emergency_name || '—' %><% if (driver.emergency_phone) { %> · <%= driver.emergency_phone %><% } %></td></tr>
+    <tr><th>Hire date</th><td><%= driver.hire_date ? fmtDate(driver.hire_date) : '—' %></td></tr>
+    <tr><th>Pay step</th><td><%= driver.step_label %> · current split <b><%= driver.current_split %>%</b></td></tr>
+  </table></div>
+  <p class="notice">Edit profile fields on the <a href="/drivers">Drivers page</a>. Drivers keep their own address, phone and emergency contact current in My File — changes wait for your review there.</p>
+</div>
+
+<div class="card">
+  <h2>Expiries — CDL · Medical · TWIC</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Document</th><th>Expires</th><th>Status</th></tr>
+    <% [['cdl','CDL'],['medical_card','DOT Medical Card'],['twic','TWIC Card']].forEach(function(pair){ var doc = latest[pair[0]]; %>
+    <tr>
+      <td><%= pair[1] %></td>
+      <% if (doc && doc.expires_on) { var xi = expiryInfo(doc.expires_on); %>
+      <td><%= fmtDate(doc.expires_on) %></td>
+      <td><% if (xi) { %><span class="badge <%= xi.cls %>"><%= xi.label %></span><% } else { %>OK<% } %></td>
+      <% } else if (doc) { %>
+      <td>—</td><td><span class="badge warn">No expiry recorded</span></td>
+      <% } else { %>
+      <td>—</td><td><span class="badge flag">Not on file</span></td>
+      <% } %>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">One standard everywhere: 60 days out = yellow, start preparing · 30 days = red, urgent · past the date = Expired.</p>
+</div>
+
+<div class="card">
+  <h2>Document checklist — Driver Qualification File</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Item</th><th>Provided by</th><th>Status</th></tr>
+    <% checklist.forEach(function(c){ %>
+    <tr>
+      <td><%= c.label %></td>
+      <td><%= c.who %></td>
+      <td><% if (c.doc) { %>✓ <a href="/documents/<%= c.doc.id %>/download"><%= c.doc.original_name %></a> · <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.expires_on) { var xi2 = expiryInfo(c.doc.expires_on); %> · expires <%= fmtDate(c.doc.expires_on) %><% if (xi2) { %> <span class="badge <%= xi2.cls %>"><%= xi2.label %></span><% } } %><% if (c.doc.status === 'pending') { %> <span class="badge warn">Pending your review</span><% } %><% } else { %><span class="badge flag">Missing</span><% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>Company records — status</h2>
+  <ul class="check-list">
+    <li>Clearinghouse query: <% if (latest.clearinghouse) { %><b>on file — <%= fmtDate(latest.clearinghouse.uploaded_at) %></b><% } else { %><b>not on file</b><% } %></li>
+    <li>Drug test result: <% if (latest.drug_test) { %><b>on file — <%= fmtDate(latest.drug_test.uploaded_at) %></b><% } else { %><b>not on file</b><% } %></li>
+    <li>MVR: <% if (latest.mvr) { %><b>latest <%= fmtDate(latest.mvr.uploaded_at) %></b> (owner pulls from Georgia DDS)<% } else { %><b>not on file</b><% } %></li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Issued items</h2>
+  <p class="notice">Company cards, fuel cards, tablet, keys — the issue &amp; return register arrives with the next update.</p>
+</div>
+<% } %>
+<%- include('partials/footer') %>
