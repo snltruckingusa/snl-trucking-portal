@@ -22,6 +22,7 @@ router.get('/', requireLogin, async (req, res) => {
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   res.render('dvir', {
     dvir: dvir.rows, logs: logs.rows, drivers: drivers.rows,
+    pendingLogs: logs.rows.filter((l) => l.status === 'pending'),
     isAdmin: isAdmin(req), scopedDriverId: scope,
     filterDriver: req.query.driver_id || '',
   });
@@ -53,6 +54,17 @@ router.post('/mechanic', requireLogin, async (req, res) => {
     'INSERT INTO mechanic_logs (truck_number, log_date, description, cost, mechanic) VALUES ($1,$2,$3,$4,$5)',
     [(req.body.truck_number || '').trim(), req.body.log_date, (req.body.description || '').trim(),
      num(req.body.cost), (req.body.mechanic || '').trim() || null]
+  );
+  res.redirect('/dvir');
+});
+
+router.post('/mechanic/:id/review', requireLogin, async (req, res) => {
+  // The owner's tap means Reviewed & Recorded — it confirms the
+  // record, not the repair (Eric, 2026-11-14).
+  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
+  await query(
+    "UPDATE mechanic_logs SET status = 'recorded', reviewed_at = now() WHERE id = $1",
+    [req.params.id]
   );
   res.redirect('/dvir');
 });
