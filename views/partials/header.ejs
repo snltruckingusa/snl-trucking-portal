@@ -12,7 +12,7 @@
   <% if (user) { %>
   <div class="who">
     <%= user.username %>
-    <% if (user.role === 'admin') { %>(Admin)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
+    <% if (user.role === 'admin') { %>(Admin)<% } else if (user.role === 'mechanic') { %>(Mechanic)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
     · <a class="who-link" href="/change-password">Password</a>
     · <a class="who-link" href="/logout">Logout</a>
   </div>
@@ -37,6 +37,10 @@
     <a href="/settlement/mpg">MPG</a>
     <a href="/dvir">Maintenance</a>
     <a href="/mytruck">My Truck</a>
+  </nav>
+  <% } else if (user.role === 'mechanic') { %>
+  <nav class="nav">
+    <a href="/mechanic">Repair Entry</a>
   </nav>
   <% } else { %>
   <nav class="tabbar">
