@@ -1,9 +1,10 @@
 <%- include('partials/header', { title: 'Loads' }) %>
 <h1>Loads</h1>
+<% if (typeof notice !== 'undefined' && notice) { %><div class="alert"><%= notice %></div><% } %>
 
 <div class="card">
-  <h2>Add from ticket photo (OCR)</h2>
-  <p class="notice">Upload a POD / gate ticket photo and the container number, BOL, return location, pickup/delivery, and appointment are read automatically to fill in the form below. <b>Read values are suggestions only — always check and fix them before saving.</b></p>
+  <h2>Add from dispatch capture or ticket photo (OCR)</h2>
+  <p class="notice">Upload the dispatcher's order capture — the empty container number, load container, delivery city, and appointment are read automatically to fill in the form below. A gate ticket or POD photo works too. <b>Read values are suggestions only — always check and fix them before saving.</b></p>
   <form method="POST" action="/loads/ocr" enctype="multipart/form-data">
     <label>Ticket photo</label>
     <input type="file" name="ticket" accept="image/*" required>
@@ -30,8 +31,8 @@
     </div>
     <div class="form-row">
       <div><label>Pickup</label><input name="pickup" value="<%= ocr ? ocr.pickup : '' %>"></div>
-      <div><label>Delivery</label><input name="delivery" value="<%= ocr ? ocr.delivery : '' %>"></div>
-      <div><label>Empty return</label><input name="notes" value="<%= ocr ? ocr.return_location : '' %>" placeholder="ITS Conglobal etc."></div>
+      <div><label>Delivery (city)</label><input name="delivery" value="<%= ocr ? ocr.delivery : '' %>"></div>
+      <div><label>Empty container #</label><input name="empty_container" value="<%= ocr ? (ocr.empty_container || '') : '' %>" placeholder="The empty you return today"></div>
       <div><label>Appointment</label><input type="datetime-local" name="appointment" value="<%= ocr && ocr.appointment ? ocr.appointment : '' %>"></div>
     </div>
     <div class="form-row">
@@ -42,6 +43,7 @@
       <div><label>Overweight ($)</label><input name="overweight" type="number" step="0.01" value="0"></div>
       <div><label>FSC ($)</label><input name="fsc" type="number" step="0.01" value="0"></div>
       <div><label>Miles</label><input name="miles" type="number" step="0.1" value="0"></div>
+      <div><label>Notes</label><input name="notes" value="<%= ocr ? (ocr.notes || '') : '' %>"></div>
       <% if (isAdmin) { %><div><label>Status</label><select name="status"><option value="pending">Pending</option><option value="confirmed">Confirmed</option></select></div><% } %>
     </div>
     <div style="margin-top:12px"><button type="submit">Save load</button></div>
@@ -93,12 +95,12 @@
       <% if (ev && ev.ow) { %><span class="badge flag">Ticket O/W over limit</span><% } %>
       <% if (l.status === 'pending') { %><a class="btn small danger" href="/loads/<%= l.id %>/delete-form">Delete</a><% } %>
     </div>
-    <div class="step done"><span class="step-ic">✓</span> <b>Step 1 — Dispatch</b> <span class="notice">Load entered<% if (l.bol_ref) { %> · BOL <%= l.bol_ref %><% } %></span></div>
+    <div class="step done"><span class="step-ic">✓</span> <b>Step 1 — Dispatch</b> <span class="notice">Load entered<% if (l.bol_ref) { %> · BOL <%= l.bol_ref %><% } %><% if (l.empty_container) { %> · Empty today: <%= l.empty_container %><% var em = (typeof emptyMatch !== 'undefined' && emptyMatch) ? emptyMatch[l.id] : null; if (em) { %> (from your <%= fmtDate(em.load_date) %> <%= em.delivery || '' %> load — that load's Step 4 takes its empty-in ticket)<% } %><% } %><% if (l.dispatch_ok) { %> · <b>Dispatch approved ✓</b><% } else { %> · <b>Waiting for owner approval</b><% } %></span></div>
     <% stages.forEach(function(s){ var done = !!(ev && ev[s.key] > 0); var isCurrent = !done && !currentSet; if (isCurrent) currentSet = true;
        var item = ev ? (ev.items.filter(function(it){ return it.stage === s.key; }).slice(-1)[0] || null) : null; %>
     <details class="step <%= done ? 'done' : (isCurrent ? 'current' : 'future') %>" <%= isCurrent ? 'open' : '' %>>
       <summary><span class="step-ic"><%= done ? '✓' : s.n %></span> <b>Step <%= s.n %> — <%= s.title %></b>
-        <% if (done && item) { %> <span class="notice"><%= new Date(item.created_at).toLocaleString() %><% if (item.extracted && item.extracted.cargo_wt) { %> · CARGO <%= Math.round(item.extracted.cargo_wt).toLocaleString() %> lb<% if (item.extracted.ow_limit) { %> / limit <%= item.extracted.ow_limit.toLocaleString() %> lb<% } %><% if (item.extracted.overweight) { %> · <b>O/W over</b><% } %><% } %></span> <a href="/loads/evidence/<%= item.id %>/photo" target="_blank">View photo</a><% } %>
+        <% if (done && item) { %> <span class="notice"><%= new Date(item.created_at).toLocaleString() %><% if (item.extracted && item.extracted.cargo_wt) { %> · CARGO <%= Math.round(item.extracted.cargo_wt).toLocaleString() %> lb<% if (item.extracted.ow_limit) { %> / limit <%= item.extracted.ow_limit.toLocaleString() %> lb<% } %><% if (item.extracted.overweight) { %> · <b>O/W over</b><% } %><% } %><% if (item.extracted && item.extracted.container_no && l.container_no && String(item.extracted.container_no).toUpperCase() !== String(l.container_no).toUpperCase()) { %> · <b>⚠ Ticket container <%= item.extracted.container_no %> ≠ load <%= l.container_no %></b><% } %></span> <a href="/loads/evidence/<%= item.id %>/photo" target="_blank">View photo</a><% } %>
         <% if (!done && !isCurrent) { %> <span class="notice">Comes after the step above — open this only if you need to upload early.</span><% } %>
       </summary>
       <div class="step-body">
@@ -112,6 +114,9 @@
     </details>
     <% }) %>
     <% if (ev && ev.load_out > 0 && ev.pod > 0 && ev.empty_in > 0) { %><div class="step done"><span class="step-ic">✅</span> <b>Job complete</b></div><% } %>
+    <div class="step"><span class="step-ic">$</span> <b>Amounts</b> <span class="notice">In order — from the tickets. The owner approves and confirms at the end.</span>
+      <div class="step-body"><span class="notice">Rate <%= money(l.rate) %> · Prepull <%= money(l.prepull) %> · Reefer <%= money(l.reefer) %> · Detention <%= money(l.detention) %><% if (l.detention_status === 'pending') { %> (pending)<% } %> · Overweight <%= money(l.overweight) %> · FSC <%= money(l.fsc) %> → <b>Total <%= money(loadTotal(l)) %></b></span></div>
+    </div>
     <details class="step extra">
       <summary><span class="step-ic">+</span> <b>Detention claim</b> <span class="notice">Only with the dispatcher's confirmation message</span></summary>
       <div class="step-body">
@@ -142,7 +147,7 @@
       <td><%= l.pickup || '' %> → <%= l.delivery || '' %><% if (l.notes) { %><br><span class="notice"><%= l.notes %></span><% } %></td>
       <td class="num"><%= money(loadTotal(l)) %></td>
       <td class="num"><%= l.miles %><% var lane = laneFor(l.delivery); if (lane && lane.gallons) { %><br><span class="notice">Std <%= lane.gallons %> gal</span><% } %></td>
-      <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? 'Confirmed' : 'Pending' %></span></td>
+      <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? 'Confirmed' : 'Pending' %></span><% if (l.status === 'pending') { %><br><span class="notice">Dispatch <%= l.dispatch_ok ? '✓' : '—' %> · Tickets <%= l.tickets_ok ? '✓' : '—' %></span><% } %></td>
       <td>
         <span class="badge progress"><%= PROGRESS_LABELS[l.progress] || l.progress %></span>
         <% if (l.progress !== 'returned' && (isAdmin || scopedDriverId === l.driver_id)) { %>
@@ -150,6 +155,12 @@
         <% } %>
       </td>
       <td>
+        <% if (isAdmin && l.status === 'pending' && !l.dispatch_ok) { %>
+        <form class="inline" method="POST" action="/loads/<%= l.id %>/approve-dispatch"><button class="btn small" type="submit">Approve dispatch</button></form>
+        <% } %>
+        <% if (isAdmin && l.status === 'pending' && l.dispatch_ok && !l.tickets_ok) { %>
+        <form class="inline" method="POST" action="/loads/<%= l.id %>/approve-tickets"><button class="btn small secondary" type="submit">Approve tickets</button></form>
+        <% } %>
         <% if (isAdmin && l.status === 'pending') { %>
         <form class="inline" method="POST" action="/loads/<%= l.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form>
         <% } %>
@@ -160,6 +171,7 @@
           <form method="POST" action="/loads/<%= l.id %>/edit" style="min-width:280px;margin-top:8px;text-align:left">
             <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(l.load_date) %>"></div>
             <div><label>Container #</label><input name="container_no" value="<%= l.container_no || '' %>"></div>
+            <div><label>Empty container #</label><input name="empty_container" value="<%= l.empty_container || '' %>"></div>
             <div><label>BOL / Reference</label><input name="bol_ref" value="<%= l.bol_ref || '' %>"></div>
             <div><label>Pickup</label><input name="pickup" value="<%= l.pickup || '' %>"></div>
             <div><label>Delivery</label><input name="delivery" value="<%= l.delivery || '' %>"></div>
