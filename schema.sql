@@ -292,3 +292,9 @@ CREATE TABLE IF NOT EXISTS prepulls (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   decided_at TIMESTAMPTZ
 );
+
+-- Driver address/phone for the statement letterhead (Eric's Excel
+-- statement format, 2026-11-14). Drivers will maintain these
+-- themselves in the profile build; admin can enter them meanwhile.
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS phone TEXT;
