@@ -288,9 +288,12 @@ router.get('/statement', requireLogin, async (req, res) => {
   }
   const data = await computeWeek(wsISO, driverId);
   if (!data.rows.length) return res.redirect('/settlement');
+  // Pay day (Eric's statement format): the Friday of the following
+  // week — settlements are paid 1 week in arrears.
+  const payDayISO = toISODate(addDays(new Date(data.weekEndISO + 'T00:00:00'), 6));
   res.render('statement-print', {
     r: data.rows[0], weekStartISO: data.weekStartISO, weekEndISO: data.weekEndISO,
-    generatedOn: toISODate(new Date()),
+    generatedOn: toISODate(new Date()), payDayISO,
   });
 });
 

@@ -22,13 +22,13 @@ router.get('/', requireLogin, requireAdmin, async (req, res) => {
 });
 
 router.post('/', requireLogin, requireAdmin, async (req, res) => {
-  const { name, truck_number, pay_split, hire_date, ladder_exempt } = req.body;
+  const { name, truck_number, pay_split, hire_date, ladder_exempt, address, phone } = req.body;
   try {
     if (!name || !name.trim()) throw new Error('Driver name is required.');
     await query(
-      'INSERT INTO drivers (name, truck_number, pay_split, hire_date, ladder_exempt) VALUES ($1, $2, $3, $4, $5)',
+      'INSERT INTO drivers (name, truck_number, pay_split, hire_date, ladder_exempt, address, phone) VALUES ($1, $2, $3, $4, $5, $6, $7)',
       [name.trim(), (truck_number || '').trim(), num(pay_split, 50),
-       hire_date || null, ladder_exempt === 'on']
+       hire_date || null, ladder_exempt === 'on', (address || '').trim() || null, (phone || '').trim() || null]
     );
     res.redirect('/drivers');
   } catch (err) {
@@ -38,11 +38,11 @@ router.post('/', requireLogin, requireAdmin, async (req, res) => {
 });
 
 router.post('/:id/edit', requireLogin, requireAdmin, async (req, res) => {
-  const { name, truck_number, pay_split, active, hire_date, ladder_exempt } = req.body;
+  const { name, truck_number, pay_split, active, hire_date, ladder_exempt, address, phone } = req.body;
   await query(
-    'UPDATE drivers SET name = $1, truck_number = $2, pay_split = $3, active = $4, hire_date = $5, ladder_exempt = $6 WHERE id = $7',
+    'UPDATE drivers SET name = $1, truck_number = $2, pay_split = $3, active = $4, hire_date = $5, ladder_exempt = $6, address = $7, phone = $8 WHERE id = $9',
     [name.trim(), (truck_number || '').trim(), num(pay_split, 50), active === 'on',
-     hire_date || null, ladder_exempt === 'on', req.params.id]
+     hire_date || null, ladder_exempt === 'on', (address || '').trim() || null, (phone || '').trim() || null, req.params.id]
   );
   res.redirect('/drivers');
 });
