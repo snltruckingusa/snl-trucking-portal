@@ -216,7 +216,7 @@ router.get('/', requireLogin, async (req, res) => {
     .slice(0, 20);
   const vehicleRows = (await query('SELECT truck_number, vin, plate FROM vehicles')).rows;
   const vehicleMap = {};
-  vehicleRows.forEach((v) => { vehicleMap[String(v.truck_number).replace(/^#/, '')] = v; });
+  vehicleRows.forEach((v) => { const k = String(v.truck_number).replace(/^#/, ''); if (!vehicleMap[k] || v.vin) vehicleMap[k] = v; });
   const siteMessages = (await query(
     "SELECT * FROM contact_messages ORDER BY (status = 'new') DESC, created_at DESC LIMIT 10"
   )).rows;
