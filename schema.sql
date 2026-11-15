@@ -326,3 +326,36 @@ CREATE TABLE IF NOT EXISTS profile_changes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   decided_at TIMESTAMPTZ
 );
+
+-- My Truck build (2026-11-14, Eric): a top-level section per truck —
+-- vehicle documents register plus repair history. Vehicle documents
+-- live IN the database (registration, annual inspection, insurance,
+-- permits, title/lease) with expiry tracking; the originals ride in
+-- the truck, the portal holds the copies.
+CREATE TABLE IF NOT EXISTS vehicle_docs (
+  id SERIAL PRIMARY KEY,
+  truck_number TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('registration','annual_inspection','insurance','permit','title_lease','other')),
+  original_name TEXT NOT NULL,
+  mime_type TEXT,
+  size_bytes INTEGER,
+  file_data BYTEA,
+  expires_on DATE,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Repair records grow up: where the work was done, who paid, the
+-- odometer, the invoice photo, and who entered the record. Entries
+-- from drivers and outside shops wait as 'pending' until the owner
+-- reviews them — his word for that step is Reviewed & Recorded, not
+-- Approved: he confirms the record, he did not approve the repair.
+-- Rows that predate this build keep the default 'recorded'.
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS odometer INTEGER;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS shop TEXT;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS paid_by TEXT;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS photo_data BYTEA;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS photo_mime TEXT;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'recorded';
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS entered_by TEXT;
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS driver_id INTEGER REFERENCES drivers(id);
+ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
