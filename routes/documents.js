@@ -18,6 +18,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { query } = require('../db');
 const { requireLogin, scopedDriverId, isAdmin, toISODate } = require('../lib/helpers');
 const { SAFETY_TOPICS } = require('../lib/safety');
@@ -61,7 +62,7 @@ router.get('/', requireLogin, async (req, res) => {
   if (scope) {
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
     const docs = (await query(
-      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
       [scope]
     )).rows;
     const pendingChange = (await query(
@@ -98,7 +99,7 @@ router.get('/', requireLogin, async (req, res) => {
     driver = drivers.find((d) => d.id === driverId) || null;
     if (driver) {
       docs = (await query(
-        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
         [driverId]
       )).rows;
     }
@@ -180,11 +181,18 @@ router.post('/upload', requireLogin, uploadMem.single('file'), async (req, res) 
     ? req.body.expires_on : null;
   const category = CATEGORIES[req.body.category] ? req.body.category : 'other';
   const status = scope ? 'pending' : 'confirmed';
-  await query(
-    `INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on, file_data, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [driver_id, category, req.file.originalname, req.file.originalname, req.file.mimetype, req.file.size, expiresOn, req.file.buffer, status]
-  );
+  try {
+    await query(
+      `INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on, file_data, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [driver_id, category, req.file.originalname, req.file.originalname, req.file.mimetype, req.file.size, expiresOn, req.file.buffer, status]
+    );
+  } catch (e) {
+    // Never let a failed insert crash the request (an unhandled async
+    // error takes the whole process down and every upload looks lost).
+    return res.redirect('/documents?driver_id=' + driver_id + '&notice=' +
+      encodeURIComponent('Upload did not go through — nothing was saved. Please try again.'));
+  }
   const note = scope
     ? 'Document uploaded — it is marked Pending until the owner checks it.'
     : 'Document uploaded.';
@@ -213,6 +221,112 @@ router.get('/:id/download', requireLogin, async (req, res) => {
   // Legacy rows: the file lived on the instance disk.
   const file = path.join(__dirname, '..', 'uploads', 'documents', doc.filename);
   res.download(file, doc.original_name);
+});
+
+// Load a document's PDF bytes (DB first, legacy disk rows second) after
+// the same permission check the download route uses. Returns null when
+// the document does not exist; throws { code: 403 } when not allowed.
+async function docBytesForUser(req, id) {
+  const scope = scopedDriverId(req);
+  const r = await query('SELECT * FROM documents WHERE id = $1', [id]);
+  if (!r.rows.length) return null;
+  const doc = r.rows[0];
+  if (scope && doc.driver_id !== scope) { const e = new Error('Forbidden.'); e.code = 403; throw e; }
+  if (doc.file_data) return { doc, bytes: doc.file_data };
+  const file = path.join(__dirname, '..', 'uploads', 'documents', doc.filename);
+  return { doc, bytes: fs.readFileSync(file) };
+}
+
+// Inline copy for the signing page's PDF viewer (same checks as download).
+router.get('/:id/raw', requireLogin, async (req, res) => {
+  try {
+    const got = await docBytesForUser(req, req.params.id);
+    if (!got) return res.status(404).send('Not found.');
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', 'inline');
+    return res.send(got.bytes);
+  } catch (e) {
+    return res.status(e.code || 500).send(e.code === 403 ? 'Forbidden.' : 'Could not load the document.');
+  }
+});
+
+// Signing page: tap where the signature goes, draw it, stamp it.
+router.get('/:id/sign', requireLogin, async (req, res) => {
+  try {
+    const got = await docBytesForUser(req, req.params.id);
+    if (!got) return res.status(404).send('Not found.');
+    const { doc } = got;
+    const isPdf = (doc.mime_type || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(doc.original_name || '');
+    if (!isPdf) {
+      return res.redirect('/documents?driver_id=' + doc.driver_id + '&notice=' +
+        encodeURIComponent('Signing works on PDF documents only.'));
+    }
+    const driver = (await query('SELECT id, name FROM drivers WHERE id = $1', [doc.driver_id])).rows[0];
+    const back = isAdmin(req) ? '/documents?driver_id=' + doc.driver_id : '/documents';
+    return res.render('sign', {
+      title: 'Sign document', doc, driver,
+      categoryLabel: CATEGORIES[doc.category] || doc.category, back,
+    });
+  } catch (e) {
+    return res.status(e.code || 500).send(e.code === 403 ? 'Forbidden.' : 'Could not load the document.');
+  }
+});
+
+// Stamp the drawn signature onto a copy of the PDF and save the copy as
+// a NEW document row (the original is never touched). The signed copy
+// becomes the current record for its category; signed_by / signed_at
+// keep the audit trail. Admin signatures land confirmed; a driver's own
+// signature lands pending like their uploads do.
+router.post('/:id/sign', requireLogin, async (req, res) => {
+  let doc;
+  try {
+    const got = await docBytesForUser(req, req.params.id);
+    if (!got) return res.redirect('/documents');
+    doc = got.doc;
+    const sig = String(req.body.sig || '');
+    if (!sig.startsWith('data:image/png;base64,')) throw new Error('no signature');
+    const pageNo = Math.max(1, parseInt(req.body.page, 10) || 1);
+    const fx = Math.min(1, Math.max(0, parseFloat(req.body.x)));
+    const fy = Math.min(1, Math.max(0, parseFloat(req.body.y)));
+    if (!isFinite(fx) || !isFinite(fy)) throw new Error('no placement');
+
+    const pdf = await PDFDocument.load(got.bytes);
+    const pages = pdf.getPages();
+    const page = pages[Math.min(pageNo - 1, pages.length - 1)];
+    const { width: W, height: H } = page.getSize();
+    const png = await pdf.embedPng(Buffer.from(sig.split(',')[1], 'base64'));
+    const sigW = W * 0.30;
+    const sigH = sigW * (png.height / png.width);
+    let xPt = fx * W - sigW / 2;
+    let yPt = H - fy * H - sigH * 0.30; // click sits on the signature line
+    xPt = Math.min(Math.max(xPt, 6), W - sigW - 6);
+    yPt = Math.min(Math.max(yPt, 18), H - sigH - 6);
+    page.drawImage(png, { x: xPt, y: yPt, width: sigW, height: sigH });
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const now = new Date();
+    const dateStr = (now.getMonth() + 1) + '/' + now.getDate() + '/' + now.getFullYear();
+    page.drawText(dateStr, { x: xPt, y: yPt - 13, size: 9, font, color: rgb(0, 0, 0) });
+    const out = Buffer.from(await pdf.save());
+
+    const base = String(doc.original_name || 'document.pdf').replace(/\.pdf$/i, '');
+    const signedName = base + ' (signed).pdf';
+    const status = isAdmin(req) ? 'confirmed' : 'pending';
+    await query(
+      `INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on, file_data, status, signed_by, signed_at)
+       VALUES ($1, $2, $3, $4, 'application/pdf', $5, $6, $7, $8, $9, now())`,
+      [doc.driver_id, doc.category, signedName, signedName, out.length, doc.expires_on, out, status,
+       (req.session.user && req.session.user.username) || 'unknown']
+    );
+    const note = status === 'confirmed'
+      ? 'Signed copy saved — it is now the current record.'
+      : 'Signed copy saved — it is marked Pending until the owner checks it.';
+    const backQ = isAdmin(req) ? '?driver_id=' + doc.driver_id + '&' : '?';
+    return res.redirect('/documents' + backQ + 'notice=' + encodeURIComponent(note));
+  } catch (e) {
+    const backQ = doc && isAdmin(req) ? '?driver_id=' + doc.driver_id + '&' : '?';
+    return res.redirect('/documents' + backQ + 'notice=' +
+      encodeURIComponent('Signing did not go through — nothing was changed. Please try again.'));
+  }
 });
 
 router.post('/:id/delete', requireLogin, async (req, res) => {
