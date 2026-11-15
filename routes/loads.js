@@ -853,7 +853,7 @@ router.post('/:id/delete', requireLogin, async (req, res) => {
 // driver can check his own record; exceptions stay with the owner
 // off-system. A submission REQUIRES the terminal ticket photo.
 
-router.post('/prepulls', requireLogin, mem.single('photo'), async (req, res) => {
+router.post('/prepulls', requireLogin, uploadMem.single('photo'), async (req, res) => {
   const scope = scopedDriverId(req);
   const driver_id = scope || parseInt(req.body.driver_id, 10);
   if (!driver_id) return res.redirect('/loads');
