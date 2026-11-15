@@ -405,3 +405,22 @@ CREATE TABLE IF NOT EXISTS vehicles (
   plate        TEXT,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Documents: duplicate flag (2026-11-15). A duplicate upload is kept for
+-- the record but never becomes the checklist record for its category.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_duplicate BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Issued items (2026-11-15): company property handed to a driver —
+-- Amex card, TCS fuel card, tablet, phone, keys — with issue/return
+-- tracking. Holder may be a former driver (name only, no driver row).
+CREATE TABLE IF NOT EXISTS issued_items (
+  id          SERIAL PRIMARY KEY,
+  driver_id   INTEGER REFERENCES drivers(id),
+  holder_name TEXT,
+  item_type   TEXT NOT NULL,
+  detail      TEXT,
+  issued_on   DATE NOT NULL DEFAULT CURRENT_DATE,
+  returned_on DATE,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
