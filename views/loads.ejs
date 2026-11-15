@@ -103,6 +103,37 @@
     .step.future { opacity:.72; }
     .step-body { margin-top:8px; }
   </style>
+  <div class="card" style="margin-top:12px">
+    <h3>Prepull work — for another driver</h3>
+    <p class="notice">Returned another driver's empty (+$60) or pulled another driver's load out (+$75)? Submit it here with the terminal ticket photo — no ticket, no credit. It joins your week income after the owner approves it.</p>
+    <form method="post" action="/loads/prepulls" enctype="multipart/form-data">
+      <div class="form-row">
+        <div><label>Date</label><input type="date" name="work_date" value="<%= day || '' %>"></div>
+        <div><label>What did you do?</label><select name="kind">
+          <option value="empty_return">Returned an empty — +$60</option>
+          <option value="load_out">Pulled a load out — +$75</option>
+        </select></div>
+        <div><label>Container #</label><input name="container_no" required placeholder="e.g. ZCSU6846803"></div>
+        <div><label>Terminal ticket photo</label><input type="file" name="photo" accept="image/*" required></div>
+      </div>
+      <button class="btn" type="submit">Submit for approval</button>
+    </form>
+    <% if (typeof myPrepulls !== 'undefined' && myPrepulls.length) { %>
+    <table style="margin-top:10px">
+      <tr><th>Date</th><th>Work</th><th>Container</th><th>Amount</th><th>Status</th><th></th></tr>
+      <% myPrepulls.forEach(function(p){ %>
+      <tr>
+        <td><%= fmtDate(p.work_date) %></td>
+        <td><%= p.kind === 'load_out' ? 'Load out' : 'Empty return' %></td>
+        <td><%= p.container_no %></td>
+        <td><%= money(p.amount) %></td>
+        <td><%= p.status === 'approved' ? '✅ Approved' : (p.status === 'rejected' ? 'Rejected' : 'Pending') %></td>
+        <td><a href="/loads/prepulls/<%= p.id %>/photo" target="_blank">Ticket</a></td>
+      </tr>
+      <% }) %>
+    </table>
+    <% } %>
+  </div>
   <% loads.forEach(function(l){ var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null;
      var em = (typeof emptyMatch !== 'undefined' && emptyMatch) ? emptyMatch[l.id] : null;
      var emEv = em ? ((typeof evidence !== 'undefined' && evidence) ? evidence[em.id] : null) : null;
@@ -209,6 +240,23 @@
   </div>
   <% }) %>
   <% } else { %>
+  <% if (typeof pendingPrepulls !== 'undefined' && pendingPrepulls.length) { %>
+  <div class="card" style="margin-bottom:12px">
+    <h3>Prepull approvals (<%= pendingPrepulls.length %>)</h3>
+    <% pendingPrepulls.forEach(function(p){ %>
+    <form method="post" action="/loads/prepulls/<%= p.id %>/approve" style="border-top:1px solid #e5e7eb;padding:8px 0">
+      <div><b><%= p.driver_name %></b> — <%= fmtDate(p.work_date) %> · <%= p.kind === 'load_out' ? 'Pulled a load out' : 'Returned an empty' %> · Container <b><%= p.container_no %></b> · <b><%= money(p.amount) %></b> · <a href="/loads/prepulls/<%= p.id %>/photo" target="_blank">Ticket photo</a></div>
+      <% if (p.load_id) { %>
+      <div class="notice">Matches <%= p.match_driver_name %>'s <%= fmtDate(p.match_date) %> <%= p.match_delivery || '' %> load (its prepull is now <%= money(p.match_prepull) %>). <label><input type="checkbox" name="apply_deduction" value="1" checked> Also apply −<%= money(p.amount) %> to that load</label></div>
+      <% } else { %>
+      <div class="notice">No matching load found for this container — approving pays the credit only.</div>
+      <% } %>
+      <button class="btn" type="submit">Approve</button>
+      <button class="btn secondary" type="submit" formaction="/loads/prepulls/<%= p.id %>/reject">Reject</button>
+    </form>
+    <% }) %>
+  </div>
+  <% } %>
   <div class="table-wrap" style="margin-top:12px"><table>
     <tr><th>Date</th><th>Driver</th><th>Container / BOL</th><th>Pickup → Delivery</th><th class="num">Amount</th><th class="num">Miles</th><th>Status</th><th>Progress</th><th></th></tr>
     <% loads.forEach(function(l){ %>

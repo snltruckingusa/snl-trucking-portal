@@ -72,6 +72,7 @@
 
 <table class="summary">
   <tr><td>Revenue</td><td class="num"><%= money(r.revenue) %></td></tr>
+  <% if (r.prepullCredit > 0) { %><tr><td>&nbsp;&nbsp;of which prepull work (approved)</td><td class="num"><%= money(r.prepullCredit) %></td></tr><% } %>
   <tr><td>Fuel (<%= r.gallons %> gal)</td><td class="num">− <%= money(r.fuelCost) %></td></tr>
   <tr><td>Insurance ($100 × <%= r.daysWorked %> days)</td><td class="num">− <%= money(r.insurance) %></td></tr>
   <tr><td>Net</td><td class="num"><%= money(r.net) %></td></tr>

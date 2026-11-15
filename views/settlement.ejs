@@ -34,7 +34,7 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
       <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %> days worked · <%= r.splitPct %>% applied</span>
         <% if (r.fuelStd) { %><br><span class="notice">Fuel standard <%= r.fuelStd.stdGallons %> gal — <% if (r.fuelStd.excessGal >= 0) { %>+<%= r.fuelStd.excessGal %> gal over (<%= money(r.fuelStd.excessCost) %>) · your share <%= money(r.fuelStd.driverShare) %><% } else { %><%= r.fuelStd.excessGal %> gal saved (<%= money(-r.fuelStd.excessCost) %>)<% } %></span><% } %>
       </td>
-      <td class="num"><%= money(r.revenue) %></td>
+      <td class="num"><%= money(r.revenue) %><% if (r.prepullCredit > 0) { %><br><span class="notice">incl. prepull +<%= money(r.prepullCredit) %></span><% } %></td>
       <td class="num"><%= money(r.fuelCost) %></td>
       <td class="num"><%= money(r.insurance) %></td>
       <td class="num"><%= money(r.net) %></td>
