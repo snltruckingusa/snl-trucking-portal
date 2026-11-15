@@ -18,7 +18,7 @@ const {
 } = require('../lib/helpers');
 const { matchLane } = require('../lib/rates');
 const { parseEIR } = require('../lib/eir');
-const { parseDispatchText } = require('../lib/dispatch');
+const { parseDispatchText, splitDeliveryLine } = require('../lib/dispatch');
 
 const router = express.Router();
 
@@ -314,6 +314,17 @@ async function evidenceSummary(loadIds) {
   return map;
 }
 
+// Display decoration: split each load's dispatch note (the raw
+// delivery line) into company name + street address so the driver
+// card can show them with their own labels (Eric, 2026-11-14).
+function decorateRows(rows) {
+  for (const l of rows) {
+    const s = splitDeliveryLine(l.notes);
+    l.d_company = s.company;
+    l.d_address = s.address;
+  }
+}
+
 function loadWhere(req) {
   const scope = scopedDriverId(req);
   const conditions = [];
@@ -357,6 +368,7 @@ router.get('/', requireLogin, async (req, res) => {
   // earlier load's empty-in evidence — pull those summaries in too.
   const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
   if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
+  decorateRows(r.rows);
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
@@ -413,6 +425,7 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   const emptyMatch = await emptyMatchMap(r.rows);
   const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
   if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
+  decorateRows(r.rows);
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: '', to: '', driver_id: '', status: '' },
