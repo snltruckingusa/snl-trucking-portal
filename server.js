@@ -1,4 +1,8 @@
 // S&L Trucking LLC — Settlement Portal
+// All dates are the owner's local dates: run the process on Eastern Time
+// so "today", week boundaries, and form defaults match the business day
+// in Georgia, not the server's UTC clock.
+process.env.TZ = 'America/New_York';
 // Node.js + Express + PostgreSQL. Deploy on Render (see render.yaml).
 // Env vars: DATABASE_URL (required), SESSION_SECRET, NODE_ENV, PORT,
 //           ADMIN_PASSWORD (optional, default admin password on first seed).
@@ -7,7 +11,7 @@ const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
 const { seed } = require('./seed');
-const { money, fmtDate, loadTotal, PROGRESS_LABELS, expiringWithin } = require('./lib/helpers');
+const { money, fmtDate, fmtDateTimeLocal, loadTotal, PROGRESS_LABELS, expiringWithin } = require('./lib/helpers');
 const { matchLane } = require('./lib/rates');
 
 const app = express();
@@ -23,6 +27,7 @@ app.set('views', path.join(__dirname, 'views'));
 // Template helpers available in every view.
 app.locals.money = money;
 app.locals.fmtDate = fmtDate;
+app.locals.fmtDateTimeLocal = fmtDateTimeLocal;
 app.locals.loadTotal = loadTotal;
 app.locals.PROGRESS_LABELS = PROGRESS_LABELS;
 app.locals.expiringWithin = expiringWithin;
