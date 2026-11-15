@@ -1,0 +1,166 @@
+<%- include('partials/header', { title: 'My Truck' }) %>
+
+<% if (notice) { %><p class="notice" style="border-left:4px solid #2e7d32;padding-left:10px"><%= notice %></p><% } %>
+
+<% if (mode === 'driver') { %>
+<h1>My Truck — #<%= truck %></h1>
+
+<div class="card">
+  <h2>Truck Documents</h2>
+  <% if (!vdocs.length) { %><p class="notice">No truck documents on file yet — the owner is adding them. The originals ride in the truck.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>Document</th><th>File</th><th>Expires</th></tr>
+    <% vdocs.forEach(function(doc){ %>
+    <tr>
+      <td><%= vdCategories[doc.category] || doc.category %></td>
+      <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
+      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% if (String(doc.expires_on).slice(0,10) < todayISO) { %> <span class="badge flag">Expired</span><% } else if (expiringWithin(doc.expires_on, 45)) { %> <span class="badge warn">Soon</span><% } %><% } else { %>—<% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">Roadside inspection? Show the officer the copy right here on your phone.</p>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Add a Repair</h2>
+  <p class="notice">Got a repair done at any shop? Enter it here while you wait — it becomes part of this truck's record once the owner reviews it.</p>
+  <form method="POST" action="/mytruck/repairs" enctype="multipart/form-data">
+    <div class="form-row">
+      <div><label>Date</label><input type="date" name="log_date" value="<%= todayISO %>"></div>
+      <div><label>Shop name</label><input type="text" name="shop" required placeholder="e.g. Middle Georgia Freightliner"></div>
+    </div>
+    <div class="form-row">
+      <div><label>What was fixed (one line)</label><input type="text" name="description" required placeholder="e.g. Replaced alternator"></div>
+      <div><label>Cost ($)</label><input type="number" name="cost" step="0.01" min="0" required></div>
+    </div>
+    <div class="form-row">
+      <div><label>Paid by</label><select name="paid_by">
+        <% Object.keys(paidBy).forEach(function(k){ %><option value="<%= k %>"><%= paidBy[k] %></option><% }) %>
+      </select></div>
+      <div><label>Odometer (optional)</label><input type="number" name="odometer" min="0"></div>
+      <div><label>Invoice photo (required)</label><input type="file" name="photo" required></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Save repair</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Repair History</h2>
+  <% if (!repairs.length) { %><p class="notice">No repairs recorded for this truck yet.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Shop</th><th>Work</th><th>Cost</th><th>Paid by</th><th></th></tr>
+    <% repairs.forEach(function(r){ %>
+    <tr>
+      <td><%= fmtDate(r.log_date) %></td>
+      <td><%= r.shop || r.mechanic || '' %></td>
+      <td><%= r.description %><% if (r.status === 'pending') { %> <span class="badge warn">Waiting for owner review</span><% } %></td>
+      <td class="num"><%= money(r.cost) %></td>
+      <td><%= paidBy[r.paid_by] || '' %></td>
+      <td><% if (r.photo_data) { %><a href="/mytruck/repairs/<%= r.id %>/photo">Invoice</a><% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Inspections (DVIR)</h2>
+  <p class="notice">Daily inspections are done in the <b>ZigZag ELD app</b> — that is the official record.</p>
+  <% if (dvir.length) { %>
+  <ul class="check-list">
+    <% dvir.forEach(function(v){ %>
+    <li><%= fmtDate(v.inspection_date) %> — <%= v.defects ? ('Defects: ' + v.defects) : 'No defects' %> · <%= v.safe_to_operate ? 'Safe to operate' : 'NOT safe to operate' %></li>
+    <% }) %>
+  </ul>
+  <% } %>
+</div>
+
+<% } else { %>
+<h1>My Truck — Vehicle Register</h1>
+
+<div class="card">
+  <form method="GET" action="/mytruck" class="form-row" style="align-items:end">
+    <div><label>Truck</label><select name="truck">
+      <% trucks.forEach(function(t){ %><option value="<%= t %>" <%= String(t) === String(truck) ? 'selected' : '' %>>#<%= t %></option><% }) %>
+    </select></div>
+    <div><button type="submit">View</button></div>
+  </form>
+</div>
+
+<% if (truck) { %>
+<div class="card">
+  <h2>#<%= truck %> — Add truck document</h2>
+  <form method="POST" action="/mytruck/vehicle-docs/upload" enctype="multipart/form-data">
+    <input type="hidden" name="truck_number" value="<%= truck %>">
+    <div class="form-row">
+      <div><label>Document type</label><select name="category">
+        <% Object.keys(vdCategories).forEach(function(k){ %><option value="<%= k %>"><%= vdCategories[k] %></option><% }) %>
+      </select></div>
+      <div><label>File</label><input type="file" name="file" required></div>
+      <div><label>Expires on (optional)</label><input type="date" name="expires_on"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Upload</button></div>
+  </form>
+  <% if (!vdocs.length) { %><p class="notice">No documents for this truck yet.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>Document</th><th>File</th><th>Expires</th><th></th></tr>
+    <% vdocs.forEach(function(doc){ %>
+    <tr>
+      <td><%= vdCategories[doc.category] || doc.category %></td>
+      <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
+      <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% if (String(doc.expires_on).slice(0,10) < todayISO) { %> <span class="badge flag">Expired</span><% } else if (expiringWithin(doc.expires_on, 45)) { %> <span class="badge warn">Soon</span><% } %><% } else { %>—<% } %></td>
+      <td><form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/delete" onsubmit="return confirm('Delete this truck document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>#<%= truck %> — Add repair (owner entry, recorded at once)</h2>
+  <form method="POST" action="/mytruck/repairs" enctype="multipart/form-data">
+    <input type="hidden" name="truck_number" value="<%= truck %>">
+    <div class="form-row">
+      <div><label>Date</label><input type="date" name="log_date" value="<%= todayISO %>"></div>
+      <div><label>Shop name</label><input type="text" name="shop" required></div>
+    </div>
+    <div class="form-row">
+      <div><label>What was fixed</label><input type="text" name="description" required></div>
+      <div><label>Cost ($)</label><input type="number" name="cost" step="0.01" min="0" required></div>
+    </div>
+    <div class="form-row">
+      <div><label>Paid by</label><select name="paid_by">
+        <% Object.keys(paidBy).forEach(function(k){ %><option value="<%= k %>"><%= paidBy[k] %></option><% }) %>
+      </select></div>
+      <div><label>Odometer (optional)</label><input type="number" name="odometer" min="0"></div>
+      <div><label>Invoice photo (optional)</label><input type="file" name="photo"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Record repair</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>#<%= truck %> — Repair history</h2>
+  <% if (!repairs.length) { %><p class="notice">No repairs recorded for this truck yet.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Shop</th><th>Work</th><th>Cost</th><th>Paid by</th><th>Entered by</th><th>Status</th><th></th></tr>
+    <% repairs.forEach(function(r){ %>
+    <tr>
+      <td><%= fmtDate(r.log_date) %></td>
+      <td><%= r.shop || r.mechanic || '' %></td>
+      <td><%= r.description %></td>
+      <td class="num"><%= money(r.cost) %></td>
+      <td><%= paidBy[r.paid_by] || '' %></td>
+      <td><%= r.entered_by || '' %></td>
+      <td><% if (r.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>Reviewed &amp; recorded<% } %></td>
+      <td><% if (r.photo_data) { %><a href="/mytruck/repairs/<%= r.id %>/photo">Invoice</a><% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">Pending repairs are reviewed on the Maintenance page.</p>
+  <% } %>
+</div>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>
