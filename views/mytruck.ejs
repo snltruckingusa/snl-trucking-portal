@@ -129,8 +129,8 @@
   <form method="POST" action="/mytruck/vehicle">
     <input type="hidden" name="truck_number" value="<%= truck %>">
     <div class="form-row">
-      <div><label>VIN (full)</label><input name="vin" value="<%= vehicle ? (vehicle.vin || '') : '' %>" placeholder="3AKJHHDR7LSLL0822"></div>
-      <div><label>Plate</label><input name="plate" value="<%= vehicle ? (vehicle.plate || '') : '' %>" placeholder="YXG983"></div>
+      <div><label>VIN (full)</label><input name="vin" value="<%= vehicle ? (vehicle.vin || '') : '' %>" placeholder="Full VIN — type it in"></div>
+      <div><label>Plate</label><input name="plate" value="<%= vehicle ? (vehicle.plate || '') : '' %>" placeholder="Plate — type it in"></div>
       <div style="align-self:end"><button type="submit">Save truck details</button></div>
     </div>
   </form>
