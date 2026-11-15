@@ -7,10 +7,10 @@ const bcrypt = require('bcryptjs');
 const { query } = require('./db');
 
 const SEED_DRIVERS = [
-  { name: 'Green', truck_number: '101', pay_split: 50 },
-  { name: 'Darrell', truck_number: '201', pay_split: 50 },
-  { name: 'Brinceson', truck_number: '200', pay_split: 50 },
-  { name: 'Harrell', truck_number: '100', pay_split: 50 },
+  { name: 'Sterling Green', truck_number: '101', pay_split: 50 },
+  { name: 'Darrell Hines', truck_number: '201', pay_split: 50 },
+  { name: 'Brinceson Sanders', truck_number: '200', pay_split: 50 },
+  { name: 'Austin Harrell', truck_number: '100', pay_split: 50 },
   { name: 'Dong Sung Lee', truck_number: '100', pay_split: 50 },
 ];
 
