@@ -56,6 +56,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Mechanic accounts (the shared shop login) see one page only: the
+// repair-entry form. Every other address bounces back to it — a shop
+// must never reach driver or company data.
+app.use((req, res, next) => {
+  const u = req.session && req.session.user;
+  if (u && u.role === 'mechanic') {
+    const ok = req.path === '/mechanic' || req.path.startsWith('/mechanic/')
+      || req.path === '/login' || req.path === '/logout' || req.path === '/change-password';
+    if (!ok) return res.redirect('/mechanic');
+  }
+  next();
+});
+
 // Health check (Render uses this).
 app.get('/health', (req, res) => res.status(200).json({ ok: true }));
 
@@ -71,6 +84,7 @@ app.use('/invoice', require('./routes/invoice'));
 app.use('/documents', require('./routes/documents'));
 app.use('/dvir', require('./routes/dvir'));
 app.use('/mytruck', require('./routes/mytruck'));
+app.use('/mechanic', require('./routes/mechanic'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
