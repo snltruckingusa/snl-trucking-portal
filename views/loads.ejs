@@ -26,7 +26,6 @@
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
       <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(new Date()) %>"></div>
-      <div><label>Appointment</label><input type="datetime-local" name="appointment" value="<%= ocr && ocr.appointment ? ocr.appointment : '' %>"></div>
     </div>
     <p class="notice" style="margin:10px 0 4px"><b>1 — Empty return</b> · which container goes into the terminal first</p>
     <div class="form-row">
@@ -43,6 +42,7 @@
     </div>
     <div class="form-row">
       <div><label>Notes (address as dispatched)</label><input name="notes" value="<%= ocr ? (ocr.notes || '') : '' %>"></div>
+      <div><label>Appointment</label><input type="datetime-local" name="appointment" value="<%= ocr && ocr.appointment ? ocr.appointment : '' %>"></div>
     </div>
     <div class="form-row">
       <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="0"></div>
@@ -125,9 +125,12 @@
     </div>
     <div class="step done"><span class="step-ic">✓</span> <b>Step 1 — Dispatch</b> <% if (l.dispatch_ok) { %><span class="notice"><b>Dispatch approved ✓</b></span><% } else { %><span class="notice"><b>Waiting for owner approval</b></span><% } %>
       <div class="step-body">
-        <div><b>Empty return</b> — Container <b><%= l.empty_container || '—' %></b><% if (l.empty_pin) { %> · PIN <%= l.empty_pin %><% } %><% if (em) { %> <span class="notice">(from your <%= fmtDate(em.load_date) %> <%= em.delivery || '' %> load — its ticket is Step 2 below)</span><% } %></div>
-        <div><b>Load out</b> — Container <b><%= l.container_no || '—' %></b><% if (l.load_pin) { %> · PIN <%= l.load_pin %><% } %><% if (l.bol_ref) { %> · BOL <%= l.bol_ref %><% } %></div>
-        <div><b>Delivery</b> — <%= l.delivery || '?' %><% if (l.appointment) { %> · Appt <%= new Date(l.appointment).toLocaleString() %><% } %><% if (l.notes) { %><br><span class="notice"><%= l.notes %></span><% } %></div>
+        <div><b>Empty return</b></div>
+        <div class="notice">Container #: <b><%= l.empty_container || '—' %></b><% if (l.empty_pin) { %> · PIN #: <%= l.empty_pin %><% } %><% if (em) { %> <span>(from your <%= fmtDate(em.load_date) %> <%= em.delivery || '' %> load — its ticket is Step 2 below)</span><% } %></div>
+        <div style="margin-top:6px"><b>Load out</b></div>
+        <div class="notice">Container #: <b><%= l.container_no || '—' %></b><% if (l.load_pin) { %> · PIN #: <%= l.load_pin %><% } %><% if (l.bol_ref) { %> · BOL #: <%= l.bol_ref %><% } %></div>
+        <div style="margin-top:6px"><b>Delivery</b></div>
+        <div class="notice"><% if (l.d_company) { %>Company name: <%= l.d_company %><br><% } %><% if (l.d_address) { %>Address: <%= l.d_address %><br><% } %><% if (!l.d_company && !l.d_address && l.notes) { %><%= l.notes %><br><% } %>City: <%= l.delivery || '?' %><% if (l.appointment) { %><br>Appointment: <%= new Date(l.appointment).toLocaleString() %><% } %></div>
       </div>
     </div>
     <% stages.forEach(function(s){
