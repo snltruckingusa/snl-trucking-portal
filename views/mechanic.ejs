@@ -1,0 +1,49 @@
+<%- include('partials/header', { title: 'Repair Entry' }) %>
+<h1>Repair Entry — S&amp;L Trucking</h1>
+<p class="notice">Repaired one of our trucks? Please enter the job here. The shop name is required on every entry. Once you submit, the entry cannot be changed — if something is wrong, tell the owner and he will fix it at review.</p>
+
+<% if (notice) { %><p class="notice" style="border-left:4px solid #2e7d32;padding-left:10px"><%= notice %></p><% } %>
+
+<div class="card">
+  <h2>Enter a repair</h2>
+  <form method="POST" action="/mechanic" enctype="multipart/form-data">
+    <div class="form-row">
+      <div><label>Truck #</label><input type="text" name="truck_number" list="trucklist" required placeholder="100">
+        <datalist id="trucklist"><% trucks.forEach(function(t){ %><option value="<%= t %>"><% }) %></datalist></div>
+      <div><label>Date</label><input type="date" name="log_date" value="<%= todayISO %>"></div>
+      <div><label>Shop name</label><input type="text" name="shop" required placeholder="Your shop's name"></div>
+    </div>
+    <div class="form-row">
+      <div><label>What was fixed (one line)</label><input type="text" name="description" required placeholder="e.g. Replaced alternator"></div>
+      <div><label>Invoice amount ($)</label><input type="number" name="cost" step="0.01" min="0" required></div>
+    </div>
+    <div class="form-row">
+      <div><label>Paid by</label><select name="paid_by">
+        <% Object.keys(paidBy).forEach(function(k){ %><option value="<%= k %>"><%= paidBy[k] %></option><% }) %>
+      </select></div>
+      <div><label>Odometer (optional)</label><input type="number" name="odometer" min="0"></div>
+      <div><label>Invoice photo (required)</label><input type="file" name="photo" required></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Submit repair</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Your recent entries</h2>
+  <% if (!mine.length) { %><p class="notice">Nothing submitted yet.</p><% } else { %>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Truck</th><th>Shop</th><th>Work</th><th>Amount</th><th>Status</th></tr>
+    <% mine.forEach(function(r){ %>
+    <tr>
+      <td><%= fmtDate(r.log_date) %></td>
+      <td>#<%= r.truck_number %></td>
+      <td><%= r.shop || '' %></td>
+      <td><%= r.description %></td>
+      <td class="num"><%= money(r.cost) %></td>
+      <td><% if (r.status === 'pending') { %><span class="badge warn">Waiting for owner review</span><% } else { %>Reviewed &amp; recorded<% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>
