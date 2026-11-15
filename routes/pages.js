@@ -77,6 +77,10 @@ router.get('/', requireLogin, async (req, res) => {
        WHERE driver_id = $1 AND expires_on IS NOT NULL AND expires_on <= CURRENT_DATE + 30`,
       [scope]
     );
+    const safetyAck = await query(
+      'SELECT COUNT(*) AS n FROM safety_acks WHERE driver_id = $1',
+      [scope]
+    );
     const thisWeek = await query(
       'SELECT * FROM settlements WHERE week_start = $1 AND driver_id = $2',
       [wsISO, scope]
@@ -103,6 +107,7 @@ router.get('/', requireLogin, async (req, res) => {
       today, todayLoads: todayLoads.rows, todayFuel: todayFuel.rows[0],
       pendingCount: parseInt(pendingOwn.rows[0].n, 10),
       expiringCount: parseInt(expiringOwn.rows[0].n, 10),
+      safetyDone: parseInt(safetyAck.rows[0].n, 10), safetyTotal: SAFETY_TOPICS.length,
       thisWeek: thisWeek.rows[0] || null, lastWeek: lastWeek.rows[0] || null,
       weekStartISO: wsISO, weekEndISO: weISO, lastWeekStartISO: lastWsISO, lastWeekEndISO: lastWeISO,
       evidenceMissing, stageLabels: STAGE_LABELS,
