@@ -14,6 +14,40 @@ const { SAFETY_TOPICS } = require('../lib/safety');
 
 const router = express.Router();
 
+// Public home page: visitors who are not signed in see the company
+// introduction (static content only — nothing from the database) with
+// a message form. Signed-in users fall through to the dashboard.
+// (Eric, 2026-11-15: a public face for the company; the internal
+// system stays behind the login exactly as before.)
+router.get('/', (req, res, next) => {
+  if (req.session && req.session.user) return next();
+  return res.render('home-public', { sent: req.query.sent === '1' });
+});
+
+router.post('/contact', async (req, res) => {
+  // Honeypot: real visitors never see or fill this field; bots do.
+  if (String(req.body.website || '').trim() !== '') return res.redirect('/?sent=1');
+  const clean = (s, n) => String(s || '').trim().slice(0, n);
+  const name = clean(req.body.name, 120);
+  const contact = clean(req.body.contact, 160);
+  const message = clean(req.body.message, 2000);
+  if (!name || !contact || !message) return res.redirect('/#contact');
+  await query(
+    'INSERT INTO contact_messages (name, contact, message) VALUES ($1, $2, $3)',
+    [name, contact, message]
+  );
+  return res.redirect('/?sent=1#contact');
+});
+
+router.post('/messages/:id/read', requireLogin, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
+  await query(
+    "UPDATE contact_messages SET status = 'read', read_at = now() WHERE id = $1",
+    [req.params.id]
+  );
+  res.redirect('/');
+});
+
 // Evidence expectations per progress step — the self-check that lets a
 // driver see his own record is complete (Eric, 2026-11-14).
 const STAGE_LABELS = { load_out: 'Load-out ticket', pod: 'POD', empty_in: 'Empty-in ticket' };
@@ -180,6 +214,9 @@ router.get('/', requireLogin, async (req, res) => {
     .map(l => ({ load: l, driver_name: l.driver_name, missing: missingFor(l, allCounts) }))
     .filter(x => x.missing.length)
     .slice(0, 20);
+  const siteMessages = (await query(
+    "SELECT * FROM contact_messages ORDER BY (status = 'new') DESC, created_at DESC LIMIT 10"
+  )).rows;
   const drivers = await query("SELECT * FROM drivers WHERE active = TRUE ORDER BY name");
   return res.render('dashboard', {
     isAdmin: true,
@@ -189,7 +226,7 @@ router.get('/', requireLogin, async (req, res) => {
     receiptsTotal: parseFloat(receipts.rows[0].total),
     pending: pending.rows, drivers: drivers.rows,
     idleDrivers: idleDrivers.rows, expiringDocs: expiringDocs.rows, mpgFlags: mpgFlags.rows,
-    missingEvidence, stageLabels: STAGE_LABELS,
+    missingEvidence, stageLabels: STAGE_LABELS, siteMessages,
   });
 });
 
