@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Issued Items' }) %>
+<h1>Issued Items</h1>
+<% if (notice) { %><div class="alert ok"><%= notice %></div><% } %>
+<p class="notice">Company property out with a person — cards, tablet, keys. When someone leaves, this list is the return checklist. Anything still out with an inactive or former driver is flagged red.</p>
+
+<div class="card">
+  <h2>Record an issue</h2>
+  <form method="POST" action="/issued">
+    <div class="form-row">
+      <div><label>Driver</label>
+        <select name="driver_id">
+          <option value="">— Former driver / other (type name) —</option>
+          <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %><% if (d.truck_number) { %> (#<%= d.truck_number %>)<% } %><% if (!d.active) { %> — inactive<% } %></option><% }) %>
+        </select></div>
+      <div><label>Holder name (only if no driver picked)</label><input name="holder_name" placeholder="e.g. Saadiqa Thompson"></div>
+      <div><label>Item</label>
+        <select name="item_type"><% itemTypes.forEach(function(t){ %><option><%= t %></option><% }) %></select></div>
+      <div><label>Detail (card last 4, serial, etc.)</label><input name="detail" placeholder="e.g. Amex …31038"></div>
+      <div><label>Issued on</label><input type="date" name="issued_on" value="<%= todayISO %>"></div>
+      <div><label>Notes</label><input name="notes"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Record</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Items</h2>
+  <% if (!items.length) { %><p class="notice">Nothing recorded yet.</p><% } %>
+  <div class="table-wrap"><table>
+    <tr><th>Holder</th><th>Item</th><th>Detail</th><th>Issued</th><th>Returned</th><th>Status</th><th></th></tr>
+    <% items.forEach(function(i){ var holder = i.driver_name || i.holder_name || '—'; var gone = !i.driver_id || i.driver_active === false; %>
+    <tr>
+      <td><b><%= holder %></b></td>
+      <td><%= i.item_type %></td>
+      <td><%= i.detail || '—' %></td>
+      <td><%= fmtDate(i.issued_on) %></td>
+      <td><%= i.returned_on ? fmtDate(i.returned_on) : '—' %></td>
+      <td><% if (i.returned_on) { %><span class="badge ok">Returned</span><% } else if (gone) { %><span class="badge flag">Still out — holder left</span><% } else { %><span class="badge warn">Out</span><% } %><% if (i.notes) { %><br><span class="notice"><%= i.notes %></span><% } %></td>
+      <td>
+        <% if (!i.returned_on) { %><form class="inline" method="POST" action="/issued/<%= i.id %>/return"><button class="btn small" type="submit">Mark returned</button></form><% } else { %><form class="inline" method="POST" action="/issued/<%= i.id %>/unreturn"><button class="btn small" type="submit">Undo return</button></form><% } %>
+        <form class="inline" method="POST" action="/issued/<%= i.id %>/delete" onsubmit="return confirm('Delete this entry?')"><button class="btn small danger" type="submit">Delete</button></form>
+      </td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+<%- include('partials/footer') %>
