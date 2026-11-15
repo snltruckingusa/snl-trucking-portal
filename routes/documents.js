@@ -175,7 +175,7 @@ router.post('/profile-changes/:id/reject', requireLogin, async (req, res) => {
 router.post('/upload', requireLogin, uploadMem.single('file'), async (req, res) => {
   const scope = scopedDriverId(req);
   const driver_id = scope || parseInt(req.body.driver_id, 10);
-  if (!driver_id || !req.file) return res.redirect('/documents');
+  if (!driver_id || !req.file) return res.redirect('/documents?notice=' + encodeURIComponent('Upload did not go through — please choose the file and try again.'));
   const expiresOn = req.body.expires_on && /^\d{4}-\d{2}-\d{2}$/.test(req.body.expires_on)
     ? req.body.expires_on : null;
   const category = CATEGORIES[req.body.category] ? req.body.category : 'other';
