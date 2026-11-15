@@ -28,7 +28,7 @@
   <form method="POST" action="/dvir/mechanic">
     <div class="form-row">
       <div><label>Truck #</label><input name="truck_number" required placeholder="100"></div>
-      <div><label>Date</label><input type="date" name="log_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+      <div><label>Date</label><input type="date" name="log_date" required value="<%= fmtDate(new Date()) %>"></div>
       <div><label>Mechanic</label><input name="mechanic" placeholder="Dave"></div>
       <div><label>Cost ($)</label><input name="cost" type="number" step="0.01" value="0"></div>
     </div>

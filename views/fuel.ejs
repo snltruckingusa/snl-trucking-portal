@@ -13,7 +13,7 @@
       <% } else { %>
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
-      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
+      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
       <div><label>Gallons</label><input name="gallons" type="number" step="0.01" required placeholder="100"></div>
       <div><label>Pump $/gal</label><input name="pump_price" type="number" step="0.001" placeholder="3.899"></div>
       <div><label>TCS $/gal</label><input name="tcs_price" type="number" step="0.001" required placeholder="3.499"></div>
