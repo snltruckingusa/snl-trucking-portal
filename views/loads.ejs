@@ -26,6 +26,11 @@
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
       <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(new Date()) %>"></div>
+      <div><label>Job type</label><select name="job_type">
+        <option value="standard" <%= !ocr || !ocr.job_type || ocr.job_type === 'standard' ? 'selected' : '' %>>Standard — Empty in · Load out</option>
+        <option value="in_out_empty" <%= ocr && ocr.job_type === 'in_out_empty' ? 'selected' : '' %>>Load in · Empty out</option>
+        <option value="in_out_load" <%= ocr && ocr.job_type === 'in_out_load' ? 'selected' : '' %>>Load in · Load out</option>
+      </select></div>
     </div>
     <p class="notice" style="margin:10px 0 4px"><b>1 — Empty return</b> · which container goes into the terminal first</p>
     <div class="form-row">
@@ -37,12 +42,12 @@
       <div><label>Container #</label><input name="container_no" value="<%= ocr ? ocr.container_no : '' %>" placeholder="MSKU3613700"></div>
       <div><label>Load PIN</label><input name="load_pin" value="<%= ocr ? (ocr.load_pin || '') : '' %>"></div>
       <div><label>BOL / Reference</label><input name="bol_ref" value="<%= ocr ? ocr.bol_ref : '' %>"></div>
-      <div><label>Pickup</label><input name="pickup" value="<%= ocr ? ocr.pickup : '' %>"></div>
+      <div><label>Pickup</label><input name="pickup" value="<%= ocr && ocr.pickup ? ocr.pickup : 'GPA' %>"></div>
       <div><label>Delivery (city)</label><input name="delivery" value="<%= ocr ? ocr.delivery : '' %>"></div>
     </div>
     <div class="form-row">
       <div><label>Notes (address as dispatched)</label><input name="notes" value="<%= ocr ? (ocr.notes || '') : '' %>"></div>
-      <div><label>Appointment</label><input type="datetime-local" name="appointment" value="<%= ocr && ocr.appointment ? ocr.appointment : '' %>"></div>
+      <div><label>Appointment time</label><input type="time" name="appointment_time" value="<%= ocr ? (ocr.appointment_time || '') : '' %>"></div>
     </div>
     <div class="form-row">
       <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="0"></div>
@@ -101,12 +106,28 @@
   <% loads.forEach(function(l){ var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null;
      var em = (typeof emptyMatch !== 'undefined' && emptyMatch) ? emptyMatch[l.id] : null;
      var emEv = em ? ((typeof evidence !== 'undefined' && evidence) ? evidence[em.id] : null) : null;
-     var stages = [
-       { key:'empty_return', n:2, title:'Empty return ticket', hint:'One photo of the empty-in ticket for the empty you brought into the terminal first.' },
-       { key:'load_out', n:3, title:'Load-out ticket', hint:'One photo of the load-out (gate out) ticket. The container number and weights are read from it automatically.' },
-       { key:'pod', n:4, title:'POD — delivery complete', hint:'One photo of the signed delivery order (POD).' },
-       { key:'empty_in', n:5, title:'Empty-in ticket — this load', hint:'One photo of the empty-return ticket for THIS load\u2019s container, when you bring it back. This closes the job.' }
-     ];
+     var jt = l.job_type || 'standard';
+     var stages;
+     if (jt === 'in_out_empty') {
+       stages = [
+         { key:'load_in', n:2, ref:'load', title:'Load-in ticket', hint:'One photo of the load-in (gate in) ticket for the loaded container.' },
+         { key:'empty_out', n:3, ref:'empty', title:'Empty-out ticket', hint:'One photo of the empty-out (gate out) ticket for the empty container.' }
+       ];
+     } else if (jt === 'in_out_load') {
+       stages = [
+         { key:'load_in', n:2, ref:'empty', title:'Load-in ticket', hint:'One photo of the load-in (gate in) ticket for the container you brought in.' },
+         { key:'load_out', n:3, ref:'load', title:'Load-out ticket', hint:'One photo of the load-out (gate out) ticket. The container number and weights are read from it automatically.' },
+         { key:'pod', n:4, ref:'load', title:'POD — delivery complete', hint:'One photo of the signed delivery order (POD).' },
+         { key:'empty_in', n:5, ref:'load', title:'Empty-in ticket — this load', hint:'One photo of the empty-return ticket for THIS load\u2019s container, when you bring it back. This closes the job.' }
+       ];
+     } else {
+       stages = [
+         { key:'empty_return', n:2, ref:'empty', title:'Empty return ticket', hint:'One photo of the empty-in ticket for the empty you brought into the terminal first.' },
+         { key:'load_out', n:3, ref:'load', title:'Load-out ticket', hint:'One photo of the load-out (gate out) ticket. The container number and weights are read from it automatically.' },
+         { key:'pod', n:4, ref:'load', title:'POD — delivery complete', hint:'One photo of the signed delivery order (POD).' },
+         { key:'empty_in', n:5, ref:'load', title:'Empty-in ticket — this load', hint:'One photo of the empty-return ticket for THIS load\u2019s container, when you bring it back. This closes the job.' }
+       ];
+     }
      var currentSet = false; %>
   <div class="step-card">
     <div class="sc-head"><b><%= fmtDate(l.load_date) %></b> · <%= l.container_no || '—' %> · <%= l.pickup || '?' %> → <%= l.delivery || '?' %>
@@ -125,12 +146,21 @@
     </div>
     <div class="step done"><span class="step-ic">✓</span> <b>Step 1 — Dispatch</b> <% if (l.dispatch_ok) { %><span class="notice"><b>Dispatch approved ✓</b></span><% } else { %><span class="notice"><b>Waiting for owner approval</b></span><% } %>
       <div class="step-body">
-        <div><b>Empty return</b></div>
-        <div class="notice">Container #: <b><%= l.empty_container || '—' %></b><% if (l.empty_pin) { %> · PIN #: <%= l.empty_pin %><% } %><% if (em) { %> <span>(from your <%= fmtDate(em.load_date) %> <%= em.delivery || '' %> load — its ticket is Step 2 below)</span><% } %></div>
+        <% if (jt === 'in_out_empty') { %>
+        <div><b>Load in</b></div>
+        <div class="notice">Container #: <b><%= l.container_no || '—' %></b><% if (l.load_pin) { %> · PIN #: <%= l.load_pin %><% } %><% if (l.bol_ref) { %> · BOL #: <%= l.bol_ref %><% } %></div>
+        <div style="margin-top:6px"><b>Empty out</b></div>
+        <div class="notice">Container #: <b><%= l.empty_container || '—' %></b><% if (l.empty_pin) { %> · PIN #: <%= l.empty_pin %><% } %></div>
+        <% } else { %>
+        <div><b><%= jt === 'in_out_load' ? 'Load in' : 'Empty return' %></b></div>
+        <div class="notice">Container #: <b><%= l.empty_container || '—' %></b><% if (l.empty_pin) { %> · PIN #: <%= l.empty_pin %><% } %><% if (jt === 'standard' && em) { %> <span>(from your <%= fmtDate(em.load_date) %> <%= em.delivery || '' %> load — its ticket is Step 2 below)</span><% } %></div>
         <div style="margin-top:6px"><b>Load out</b></div>
         <div class="notice">Container #: <b><%= l.container_no || '—' %></b><% if (l.load_pin) { %> · PIN #: <%= l.load_pin %><% } %><% if (l.bol_ref) { %> · BOL #: <%= l.bol_ref %><% } %></div>
         <div style="margin-top:6px"><b>Delivery</b></div>
         <div class="notice"><% if (l.d_company) { %>Company name: <%= l.d_company %><br><% } %><% if (l.d_address) { %>Address: <%= l.d_address %><br><% } %><% if (!l.d_company && !l.d_address && l.notes) { %><%= l.notes %><br><% } %>City: <%= l.delivery || '?' %><% if (l.appointment) { %><br>Appointment: <%= new Date(l.appointment).toLocaleString() %><% } %></div>
+        <% } %>
+        <% var dispItem = ev ? (ev.items.filter(function(it){ return it.stage === 'dispatch'; }).slice(-1)[0] || null) : null;
+           if (dispItem) { %><div class="notice" style="margin-top:6px">Order capture on file · <a href="/loads/evidence/<%= dispItem.id %>/photo" target="_blank">View photo</a></div><% } %>
       </div>
     </div>
     <% stages.forEach(function(s){
@@ -140,7 +170,7 @@
          if (em) { done = !!(emEv && emEv.empty_in > 0); item = emEv ? (emEv.items.filter(function(it){ return it.stage === 'empty_in'; }).slice(-1)[0] || null) : null; }
          else { done = !!(ev && ev.other > 0); item = ev ? (ev.items.filter(function(it){ return it.stage === 'other'; }).slice(-1)[0] || null) : null; }
        } else {
-         refCont = l.container_no;
+         refCont = s.ref === 'empty' ? l.empty_container : l.container_no;
          done = !!(ev && ev[s.key] > 0);
          item = ev ? (ev.items.filter(function(it){ return it.stage === s.key; }).slice(-1)[0] || null) : null;
        }
@@ -160,7 +190,8 @@
       </div>
     </details>
     <% }) %>
-    <% if (ev && ev.load_out > 0 && ev.pod > 0 && ev.empty_in > 0) { %><div class="step done"><span class="step-ic">✅</span> <b>Job complete</b></div><% } %>
+    <% var jobDone = (jt === 'in_out_empty') ? (ev && ev.load_in > 0 && ev.empty_out > 0) : (ev && ev.load_out > 0 && ev.pod > 0 && ev.empty_in > 0); %>
+    <% if (jobDone) { %><div class="step done"><span class="step-ic">✅</span> <b>Job complete</b></div><% } %>
     <div class="step"><span class="step-ic">$</span> <b>Settlement amount — <%= money(loadTotal(l)) %></b> <span class="notice">From the tickets. The owner approves and confirms at the end.</span>
       <div class="step-body"><span class="notice">Rate <%= money(l.rate) %> · Prepull <%= money(l.prepull) %> · Reefer <%= money(l.reefer) %> · Detention <%= money(l.detention) %><% if (l.detention_status === 'pending') { %> (pending)<% } %> · Overweight <%= money(l.overweight) %> · FSC <%= money(l.fsc) %></span></div>
     </div>
@@ -184,7 +215,7 @@
     <tr>
       <td><%= fmtDate(l.load_date) %></td>
       <td><%= l.driver_name %> (#<%= l.truck_number || '' %>)</td>
-      <td><%= l.container_no || '' %><br><span class="notice"><%= l.bol_ref || '' %></span>
+      <td><%= l.container_no || '' %><br><span class="notice"><%= l.bol_ref || '' %></span><% if (l.job_type && l.job_type !== 'standard') { %><br><span class="notice"><%= l.job_type === 'in_out_empty' ? 'Load in · Empty out' : 'Load in · Load out' %></span><% } %>
         <% if (l.ticket_photo) { %><br><a href="<%= l.ticket_photo %>" target="_blank">Photo</a><% } %>
         <% var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null; %>
         <% if (ev) { %><br><span class="notice">Evidence: Load out <%= ev.load_out ? '✓' : '—' %> · POD <%= ev.pod ? '✓' : '—' %> · Empty in <%= ev.empty_in ? '✓' : '—' %></span>
@@ -225,6 +256,11 @@
           <summary class="btn small secondary">Edit</summary>
           <form method="POST" action="/loads/<%= l.id %>/edit" style="min-width:280px;margin-top:8px;text-align:left">
             <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(l.load_date) %>"></div>
+            <div><label>Job type</label><select name="job_type">
+              <option value="standard" <%= (l.job_type || 'standard') === 'standard' ? 'selected' : '' %>>Standard — Empty in · Load out</option>
+              <option value="in_out_empty" <%= l.job_type === 'in_out_empty' ? 'selected' : '' %>>Load in · Empty out</option>
+              <option value="in_out_load" <%= l.job_type === 'in_out_load' ? 'selected' : '' %>>Load in · Load out</option>
+            </select></div>
             <div><label>Container #</label><input name="container_no" value="<%= l.container_no || '' %>"></div>
             <div><label>Load PIN</label><input name="load_pin" value="<%= l.load_pin || '' %>"></div>
             <div><label>Empty container #</label><input name="empty_container" value="<%= l.empty_container || '' %>"></div>
@@ -232,7 +268,7 @@
             <div><label>BOL / Reference</label><input name="bol_ref" value="<%= l.bol_ref || '' %>"></div>
             <div><label>Pickup</label><input name="pickup" value="<%= l.pickup || '' %>"></div>
             <div><label>Delivery</label><input name="delivery" value="<%= l.delivery || '' %>"></div>
-            <div><label>Appointment</label><input type="datetime-local" name="appointment" value="<%= l.appointment ? fmtDateTimeLocal(l.appointment) : '' %>"></div>
+            <div><label>Appointment time</label><input type="time" name="appointment_time" value="<%= l.appointment ? fmtDateTimeLocal(l.appointment).slice(11, 16) : '' %>"></div>
             <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="<%= l.rate %>"></div>
             <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="<%= l.prepull %>"></div>
             <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="<%= l.reefer %>"></div>
