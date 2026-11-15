@@ -90,7 +90,9 @@ router.get('/', requireLogin, async (req, res) => {
      WHERE ${SAME_TRUCK} ORDER BY category, uploaded_at DESC`, [truck]
   )).rows : [];
   const vehicle = truck ? (await query(
-    'SELECT * FROM vehicles WHERE truck_number = $1', [String(truck).replace(/^#/, '')]
+    `SELECT * FROM vehicles WHERE truck_number = $1
+     ORDER BY (CASE WHEN vin IS NULL OR vin = '' THEN 1 ELSE 0 END), updated_at DESC NULLS LAST`,
+    [String(truck).replace(/^#/, '')]
   )).rows[0] || null : null;
   const pendingVdocs = (await query(
     `SELECT id, truck_number, category, original_name, mime_type, expires_on, uploaded_at, uploaded_by
@@ -201,13 +203,24 @@ router.post('/vehicle', requireLogin, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).send('Forbidden.');
   const truck = clean(req.body.truck_number).replace(/^#/, '');
   if (!truck) return res.redirect('/mytruck');
-  await query(
-    `INSERT INTO vehicles (truck_number, vin, plate, updated_at)
-     VALUES ($1, $2, $3, now())
-     ON CONFLICT (truck_number) DO UPDATE SET vin = EXCLUDED.vin, plate = EXCLUDED.plate, updated_at = now()`,
-    [truck, clean(req.body.vin).toUpperCase() || null, clean(req.body.plate).toUpperCase() || null]
-  );
-  res.redirect('/mytruck?truck=' + encodeURIComponent(truck) + '&notice=' + encodeURIComponent('Truck details saved.'));
+  const vin = clean(req.body.vin).toUpperCase() || null;
+  const plate = clean(req.body.plate).toUpperCase() || null;
+  try {
+    const upd = await query(
+      'UPDATE vehicles SET vin = $2, plate = $3, updated_at = now() WHERE truck_number = $1',
+      [truck, vin, plate]
+    );
+    if (!upd.rowCount) {
+      await query(
+        'INSERT INTO vehicles (truck_number, vin, plate, updated_at) VALUES ($1, $2, $3, now())',
+        [truck, vin, plate]
+      );
+    }
+    res.redirect('/mytruck?truck=' + encodeURIComponent(truck) + '&notice=' + encodeURIComponent('Truck details saved.'));
+  } catch (err) {
+    console.error('[vehicle save]', err.message);
+    res.redirect('/mytruck?truck=' + encodeURIComponent(truck) + '&notice=' + encodeURIComponent('Could not save truck details — please try again.'));
+  }
 });
 
 router.post('/vehicle-docs/:id/confirm', requireLogin, async (req, res) => {
