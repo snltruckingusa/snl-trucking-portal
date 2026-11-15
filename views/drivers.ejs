@@ -10,6 +10,8 @@
       <div><label>Truck #</label><input name="truck_number" placeholder="100"></div>
       <div><label>Pay split %</label><input name="pay_split" type="number" step="0.01" value="50"></div>
       <div><label>Hire date</label><input name="hire_date" type="date"></div>
+      <div><label>Address</label><input name="address" placeholder="1428 Fern Dr, Macon, GA 31210"></div>
+      <div><label>Phone</label><input name="phone" placeholder="478-228-9531"></div>
       <div><label style="display:inline"><input type="checkbox" name="ladder_exempt"> Ladder exempt (fixed split from day one)</label></div>
     </div>
     <div style="margin-top:12px"><button type="submit">Add</button></div>
@@ -27,7 +29,9 @@
         <td><input name="truck_number" value="<%= d.truck_number || '' %>"></td>
         <td><input name="pay_split" type="number" step="0.01" value="<%= d.pay_split %>" style="width:70px"> / <b><%= d.current_split %>%</b></td>
         <td><input name="hire_date" type="date" value="<%= d.hire_date ? fmtDate(d.hire_date) : '' %>">
-          <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> Exempt</label></td>
+          <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> Exempt</label>
+          <br><input name="address" value="<%= d.address || '' %>" placeholder="Address" style="width:95%">
+          <br><input name="phone" value="<%= d.phone || '' %>" placeholder="Phone" style="width:95%"></td>
         <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> Active</label></td>
         <td><button class="btn small" type="submit">Save</button></td>
       </form>

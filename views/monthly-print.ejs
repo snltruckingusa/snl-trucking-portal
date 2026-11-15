@@ -14,6 +14,14 @@
   td.num, th.num { text-align:right; }
   tr.total td { font-weight:700; background:#f7f7f7; }
   .note { color:#555; font-size:12px; margin-top:14px; }
+  .letterhead { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #111; padding-bottom:8px; }
+  .co-name { font-size:22px; font-weight:700; }
+  .co div { margin:1px 0; }
+  .doc-title { font-size:28px; font-weight:700; }
+  .meta { display:flex; justify-content:space-between; align-items:flex-start; margin-top:10px; gap:16px; }
+  .driver-block p { margin:3px 0; }
+  .info-box { width:320px; margin-top:0; }
+  .info-box td { padding:4px 7px; }
   .toolbar { margin-bottom:16px; }
   .toolbar button, .toolbar a { font-size:14px; padding:8px 14px; margin-right:8px; }
   @media print {
@@ -29,9 +37,28 @@
   <a href="/settlement">Back to settlement</a>
 </div>
 
-<h1>S&amp;L Trucking LLC — Monthly Summary</h1>
-<p class="sub"><b><%= driver.name %></b> (#<%= driver.truck_number || '' %>)</p>
-<p class="sub">Month: <b><%= monthLabel %></b> · Generated <%= generatedOn %></p>
+<% const fmtUS = d => { if (!d) return ''; const x = new Date(String(d).slice(0, 10) + 'T00:00:00'); const p = n => String(n).padStart(2, '0'); return p(x.getMonth() + 1) + '/' + p(x.getDate()) + '/' + x.getFullYear(); }; %>
+<div class="letterhead">
+  <div class="co">
+    <div class="co-name">S&amp;L Trucking LLC</div>
+    <div>197 Berwick Lakes Blvd</div>
+    <div>Pooler GA 31322</div>
+    <div>Tel) 213-503-5668</div>
+  </div>
+  <div class="doc-title">Statement</div>
+</div>
+<div class="meta">
+  <div class="driver-block">
+    <p>Driver's Name: <b><%= driver.name %></b></p>
+    <p>Address: <%= driver.address || '' %></p>
+    <p>Tel) <%= driver.phone || '' %></p>
+    <p>Truck # <%= driver.truck_number || '' %></p>
+  </div>
+  <table class="info-box">
+    <tr><td>Statement Date:</td><td><%= fmtUS(generatedOn) %></td></tr>
+    <tr><td>Period</td><td><%= monthLabel %></td></tr>
+  </table>
+</div>
 
 <table>
   <tr><th>Week (Sun ~ Sat)</th><th class="num">Loads</th><th class="num">Days</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th></tr>
