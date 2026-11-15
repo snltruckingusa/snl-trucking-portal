@@ -214,6 +214,9 @@ router.get('/', requireLogin, async (req, res) => {
     .map(l => ({ load: l, driver_name: l.driver_name, missing: missingFor(l, allCounts) }))
     .filter(x => x.missing.length)
     .slice(0, 20);
+  const vehicleRows = (await query('SELECT truck_number, vin, plate FROM vehicles')).rows;
+  const vehicleMap = {};
+  vehicleRows.forEach((v) => { vehicleMap[String(v.truck_number).replace(/^#/, '')] = v; });
   const siteMessages = (await query(
     "SELECT * FROM contact_messages ORDER BY (status = 'new') DESC, created_at DESC LIMIT 10"
   )).rows;
@@ -226,7 +229,7 @@ router.get('/', requireLogin, async (req, res) => {
     receiptsTotal: parseFloat(receipts.rows[0].total),
     pending: pending.rows, drivers: drivers.rows,
     idleDrivers: idleDrivers.rows, expiringDocs: expiringDocs.rows, mpgFlags: mpgFlags.rows,
-    missingEvidence, stageLabels: STAGE_LABELS, siteMessages,
+    missingEvidence, stageLabels: STAGE_LABELS, siteMessages, vehicleMap,
   });
 });
 

@@ -89,6 +89,9 @@ router.get('/', requireLogin, async (req, res) => {
     `SELECT id, category, original_name, mime_type, expires_on, uploaded_at, status, uploaded_by FROM vehicle_docs
      WHERE ${SAME_TRUCK} ORDER BY category, uploaded_at DESC`, [truck]
   )).rows : [];
+  const vehicle = truck ? (await query(
+    'SELECT * FROM vehicles WHERE truck_number = $1', [String(truck).replace(/^#/, '')]
+  )).rows[0] || null : null;
   const pendingVdocs = (await query(
     `SELECT id, truck_number, category, original_name, mime_type, expires_on, uploaded_at, uploaded_by
      FROM vehicle_docs WHERE status = 'pending' ORDER BY uploaded_at ASC`
@@ -97,7 +100,7 @@ router.get('/', requireLogin, async (req, res) => {
     `SELECT * FROM mechanic_logs WHERE ${SAME_TRUCK} ORDER BY log_date DESC, id DESC LIMIT 100`, [truck]
   )).rows : [];
   res.render('mytruck', {
-    mode: 'admin', isAdmin: true, trucks, truck, vdocs, repairs, pendingVdocs,
+    mode: 'admin', isAdmin: true, trucks, truck, vdocs, repairs, pendingVdocs, vehicle,
     vdCategories: VD_CATEGORIES, paidBy: PAID_BY, notice, todayISO,
   });
 });
@@ -192,6 +195,19 @@ router.post('/vehicle-docs/upload', requireLogin, uploadMem.single('file'), asyn
     ? 'Truck document uploaded — it becomes official when the owner confirms it. The current confirmed copy stays in place until then.'
     : 'Truck document saved.';
   res.redirect('/mytruck' + (admin ? '?truck=' + encodeURIComponent(truck) + '&' : '?') + 'notice=' + encodeURIComponent(note));
+});
+
+router.post('/vehicle', requireLogin, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
+  const truck = clean(req.body.truck_number).replace(/^#/, '');
+  if (!truck) return res.redirect('/mytruck');
+  await query(
+    `INSERT INTO vehicles (truck_number, vin, plate, updated_at)
+     VALUES ($1, $2, $3, now())
+     ON CONFLICT (truck_number) DO UPDATE SET vin = EXCLUDED.vin, plate = EXCLUDED.plate, updated_at = now()`,
+    [truck, clean(req.body.vin).toUpperCase() || null, clean(req.body.plate).toUpperCase() || null]
+  );
+  res.redirect('/mytruck?truck=' + encodeURIComponent(truck) + '&notice=' + encodeURIComponent('Truck details saved.'));
 });
 
 router.post('/vehicle-docs/:id/confirm', requireLogin, async (req, res) => {
