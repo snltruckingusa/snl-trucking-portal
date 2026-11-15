@@ -260,3 +260,8 @@ ALTER TABLE loads ADD COLUMN IF NOT EXISTS empty_container TEXT;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS dispatch_ok BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS tickets_ok BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE loads SET dispatch_ok = TRUE, tickets_ok = TRUE WHERE status = 'confirmed';
+-- Dispatch PINs (Eric's flow sheet, 2026-11-14): the driver needs the
+-- gate PIN for both legs, so the skeleton keeps them next to the
+-- container numbers.
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS empty_pin TEXT;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS load_pin TEXT;
