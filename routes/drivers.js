@@ -8,6 +8,7 @@ const express = require('express');
 const { query } = require('../db');
 const { requireLogin, requireAdmin, num, toISODate } = require('../lib/helpers');
 const { effectiveSplitPct, monthsBetween } = require('../lib/tenure');
+const { DRIVER_DOC_CHECKLIST, docChecklist } = require('../lib/checklists');
 
 const router = express.Router();
 
@@ -71,19 +72,9 @@ router.post('/:id/delete', requireLogin, requireAdmin, async (req, res) => {
 // ---- Driver Overview (2026-11-15) -------------------------------------
 // One driver, whole picture. Everything on this page is READ from where
 // it already lives (drivers row + documents) — the overview stores
-// nothing of its own (no duplication).
-const CHECKLIST = [
-  { key: 'cdl', label: 'CDL (license copy)', who: 'Driver' },
-  { key: 'medical_card', label: 'DOT Medical Card', who: 'Driver' },
-  { key: 'twic', label: 'TWIC Card', who: 'Driver' },
-  { key: 'application', label: 'Driver Application', who: 'Driver' },
-  { key: 'contract', label: 'Signed Contract', who: 'Driver' },
-  { key: 'w9', label: 'W-9', who: 'Driver' },
-  { key: 'mvr', label: 'MVR (owner pulls from GA DDS)', who: 'Company' },
-  { key: 'clearinghouse', label: 'Clearinghouse Query Result', who: 'Company' },
-  { key: 'drug_test', label: 'Drug Test Result', who: 'Company' },
-  { key: 'road_test', label: 'Road Test Record', who: 'Company' },
-];
+// nothing of its own (no duplication). The checklist itself is defined
+// once in lib/checklists.js and shared with the driver's own pages.
+const CHECKLIST = DRIVER_DOC_CHECKLIST;
 
 function stepLabel(d, todayISO) {
   const flat = parseFloat(d.pay_split || 50);
@@ -102,9 +93,9 @@ async function overviewData(driver) {
     'SELECT id, category, original_name, expires_on, status, uploaded_at FROM documents WHERE driver_id = $1 ORDER BY uploaded_at DESC',
     [driver.id]
   );
-  const latest = {};
-  for (const doc of docs.rows) if (!latest[doc.category]) latest[doc.category] = doc;
-  const checklist = CHECKLIST.map(c => ({ ...c, doc: latest[c.key] || null }));
+  const { latestByCategory } = require('../lib/checklists');
+  const latest = latestByCategory(docs.rows);
+  const checklist = docChecklist(docs.rows);
   return { latest, checklist, missing: checklist.filter(c => !c.doc).length, total: CHECKLIST.length };
 }
 

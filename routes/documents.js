@@ -21,6 +21,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const { requireLogin, scopedDriverId, isAdmin, toISODate } = require('../lib/helpers');
 const { SAFETY_TOPICS } = require('../lib/safety');
+const { docChecklist, profileChecklist } = require('../lib/checklists');
 
 const router = express.Router();
 
@@ -80,6 +81,7 @@ router.get('/', requireLogin, async (req, res) => {
       mode: 'driver', isAdmin: false, scopedDriverId: scope,
       driver, docs, pendingChange, training, companyRecords,
       categories: CATEGORIES, notice, todayISO,
+      checklist: docChecklist(docs), profileItems: profileChecklist(driver),
     });
   }
 

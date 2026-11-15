@@ -100,6 +100,12 @@ router.get('/', requireLogin, async (req, res) => {
       [lastWsISO, scope]
     );
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
+    const { docChecklist } = require('../lib/checklists');
+    const ownDocs = (await query(
+      'SELECT id, category, status, uploaded_at FROM documents WHERE driver_id = $1 ORDER BY uploaded_at DESC',
+      [scope]
+    )).rows;
+    const missingDocs = docChecklist(ownDocs).filter((c) => !c.doc).map((c) => c.label);
     // Evidence self-check: recent loads (this + last week, plus anything
     // not yet returned) and what proof is still missing for each.
     const recentLoads = await query(
@@ -121,7 +127,7 @@ router.get('/', requireLogin, async (req, res) => {
       safetyDone: parseInt(safetyAck.rows[0].n, 10), safetyTotal: SAFETY_TOPICS.length,
       thisWeek: thisWeek.rows[0] || null, lastWeek: lastWeek.rows[0] || null,
       weekStartISO: wsISO, weekEndISO: weISO, lastWeekStartISO: lastWsISO, lastWeekEndISO: lastWeISO,
-      evidenceMissing, stageLabels: STAGE_LABELS,
+      evidenceMissing, stageLabels: STAGE_LABELS, missingDocs,
     });
   }
 

@@ -15,6 +15,7 @@ const express = require('express');
 const multer = require('multer');
 const { query } = require('../db');
 const { requireLogin, scopedDriverId, isAdmin, num, toISODate } = require('../lib/helpers');
+const { vehicleChecklist } = require('../lib/checklists');
 
 const router = express.Router();
 
@@ -55,7 +56,7 @@ router.get('/', requireLogin, async (req, res) => {
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
     const truck = driver.truck_number || '';
     const vdocs = truck ? (await query(
-      `SELECT id, category, original_name, mime_type, expires_on, uploaded_at FROM vehicle_docs
+      `SELECT id, category, original_name, mime_type, expires_on, uploaded_at, status, uploaded_by FROM vehicle_docs
        WHERE ${SAME_TRUCK} ORDER BY category, uploaded_at DESC`, [truck]
     )).rows : [];
     const repairs = truck ? (await query(
@@ -70,6 +71,7 @@ router.get('/', requireLogin, async (req, res) => {
     return res.render('mytruck', {
       mode: 'driver', isAdmin: false, driver, truck, vdocs, repairs, dvir,
       vdCategories: VD_CATEGORIES, paidBy: PAID_BY, notice, todayISO,
+      vchecklist: vehicleChecklist(vdocs),
     });
   }
 
@@ -84,14 +86,18 @@ router.get('/', requireLogin, async (req, res) => {
   const trucks = truckRows.map((r) => r.truck_number);
   const truck = req.query.truck || trucks[0] || '';
   const vdocs = truck ? (await query(
-    `SELECT id, category, original_name, mime_type, expires_on, uploaded_at FROM vehicle_docs
+    `SELECT id, category, original_name, mime_type, expires_on, uploaded_at, status, uploaded_by FROM vehicle_docs
      WHERE ${SAME_TRUCK} ORDER BY category, uploaded_at DESC`, [truck]
   )).rows : [];
+  const pendingVdocs = (await query(
+    `SELECT id, truck_number, category, original_name, mime_type, expires_on, uploaded_at, uploaded_by
+     FROM vehicle_docs WHERE status = 'pending' ORDER BY uploaded_at ASC`
+  )).rows;
   const repairs = truck ? (await query(
     `SELECT * FROM mechanic_logs WHERE ${SAME_TRUCK} ORDER BY log_date DESC, id DESC LIMIT 100`, [truck]
   )).rows : [];
   res.render('mytruck', {
-    mode: 'admin', isAdmin: true, trucks, truck, vdocs, repairs,
+    mode: 'admin', isAdmin: true, trucks, truck, vdocs, repairs, pendingVdocs,
     vdCategories: VD_CATEGORIES, paidBy: PAID_BY, notice, todayISO,
   });
 });
@@ -155,18 +161,47 @@ router.get('/repairs/:id/photo', requireLogin, async (req, res) => {
 });
 
 router.post('/vehicle-docs/upload', requireLogin, uploadMem.single('file'), async (req, res) => {
-  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
-  const truck = clean(req.body.truck_number);
+  const scope = scopedDriverId(req);
+  const admin = isAdmin(req);
+  if (!scope && !admin) return res.status(403).send('Forbidden.');
+  let truck = null;
+  let uploadedBy = 'Owner';
+  if (scope) {
+    const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
+    truck = driver ? driver.truck_number : null;
+    uploadedBy = driver ? driver.name : 'Driver';
+  } else {
+    truck = clean(req.body.truck_number);
+  }
   if (!truck || !req.file) return res.redirect('/mytruck');
   const category = VD_CATEGORIES[req.body.category] ? req.body.category : 'other';
   const expiresOn = req.body.expires_on && /^\d{4}-\d{2}-\d{2}$/.test(req.body.expires_on)
     ? req.body.expires_on : null;
+  // Registration and annual inspection only count with their expiry
+  // date — without it the 60/30 alerts cannot run (Eric, 2026-11-15).
+  if (scope && (category === 'registration' || category === 'annual_inspection') && !expiresOn) {
+    return res.redirect('/mytruck?notice=' + encodeURIComponent('Please enter the expiry date printed on the document — the checklist needs it to track renewal.'));
+  }
   await query(
-    `INSERT INTO vehicle_docs (truck_number, category, original_name, mime_type, size_bytes, file_data, expires_on)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [truck, category, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer, expiresOn]
+    `INSERT INTO vehicle_docs (truck_number, category, original_name, mime_type, size_bytes, file_data, expires_on, status, uploaded_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [truck, category, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer, expiresOn,
+     scope ? 'pending' : 'confirmed', uploadedBy]
   );
-  res.redirect('/mytruck?truck=' + encodeURIComponent(truck) + '&notice=' + encodeURIComponent('Truck document saved.'));
+  const note = scope
+    ? 'Truck document uploaded — it becomes official when the owner confirms it. The current confirmed copy stays in place until then.'
+    : 'Truck document saved.';
+  res.redirect('/mytruck' + (admin ? '?truck=' + encodeURIComponent(truck) + '&' : '?') + 'notice=' + encodeURIComponent(note));
+});
+
+router.post('/vehicle-docs/:id/confirm', requireLogin, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
+  const r = await query(
+    "UPDATE vehicle_docs SET status = 'confirmed' WHERE id = $1 RETURNING truck_number",
+    [req.params.id]
+  );
+  const back = r.rows.length ? '?truck=' + encodeURIComponent(r.rows[0].truck_number) + '&' : '?';
+  res.redirect('/mytruck' + back + 'notice=' + encodeURIComponent('Truck document confirmed.'));
 });
 
 router.get('/vehicle-docs/:id/download', requireLogin, async (req, res) => {
