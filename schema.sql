@@ -311,9 +311,15 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'confirmed';
+
+-- In-portal signing (2026-11-15, Eric): a signed copy is a NEW document
+-- row stamped from the original; signed_by / signed_at record who put
+-- the signature on and when, so the folder keeps its audit trail.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS signed_by TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_category_check;
 ALTER TABLE documents ADD CONSTRAINT documents_category_check
-  CHECK (category IN ('mvr','medical_card','cdl','registration','contract','twic','w9','drug_test','clearinghouse','road_test','application','other'));
+  CHECK (category IN ('mvr','medical_card','cdl','registration','contract','twic','w9','drug_test','clearinghouse','road_test','application','annual_review','clearinghouse_consent','safety_history','other'));
 
 CREATE TABLE IF NOT EXISTS profile_changes (
   id SERIAL PRIMARY KEY,
