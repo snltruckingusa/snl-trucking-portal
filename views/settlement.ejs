@@ -18,8 +18,8 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
   <div class="stat"><div class="label">Fuel</div><div class="value"><%= money(totals.fuelCost) %></div></div>
   <div class="stat"><div class="label">Insurance</div><div class="value"><%= money(totals.insurance) %></div></div>
   <div class="stat"><div class="label">Driver pay total</div><div class="value"><%= money(totals.driverPay) %></div></div>
-  <div class="stat"><div class="label">Company net</div><div class="value"><%= money(totals.companyNet) %></div></div>
-  <div class="stat"><div class="label">Receipts this week</div><div class="value"><%= money(receiptsTotal) %> (<%= receiptsCount %>)</div></div>
+  <% if (isAdmin) { %><div class="stat"><div class="label">Company net</div><div class="value"><%= money(totals.companyNet) %></div></div>
+  <div class="stat"><div class="label">Receipts this week</div><div class="value"><%= money(receiptsTotal) %> (<%= receiptsCount %>)</div></div><% } %>
   <div class="stat"><div class="label">Pending entries</div><div class="value"><%= pendingCount %></div></div>
   <% if (typeof pendingDetentionCount !== 'undefined' && pendingDetentionCount > 0) { %>
   <div class="stat"><div class="label">Detention claims pending</div><div class="value"><%= pendingDetentionCount %></div></div>
@@ -28,7 +28,7 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
 
 <div class="card">
   <div class="table-wrap"><table>
-    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th><th class="num">Company</th><th class="num">Miles / Gallons</th><th class="num">MPG</th><th>Status</th><th></th></tr>
+    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th><% if (isAdmin) { %><th class="num">Company</th><% } %><th class="num">Miles / Gallons</th><th class="num">MPG</th><th>Status</th><th></th></tr>
     <% rows.forEach(function(r){ %>
     <tr class="<%= r.saved && r.saved.status === 'closed' ? 'closed' : '' %>">
       <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %> days worked · <%= r.splitPct %>% applied</span>
@@ -44,7 +44,7 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
         <% if (r.weekendApplied) { %><br><span class="badge good">Weekend 70% applied</span><% } %>
         <% } %>
       </td>
-      <td class="num"><%= money(r.companyNet) %></td>
+      <% if (isAdmin) { %><td class="num"><%= money(r.companyNet) %></td><% } %>
       <td class="num"><%= r.miles %> / <%= r.gallons %></td>
       <td class="num">
         <% if (r.mpg === null) { %>—<% } else { %>
