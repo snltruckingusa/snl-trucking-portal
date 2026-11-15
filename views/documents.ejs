@@ -38,7 +38,7 @@
       <div class="bi-main">
         <b><%= c.label %></b> <span class="notice">· <%= c.who === 'Driver' ? 'You provide this' : 'Kept by the company' %></span><br>
         <% if (c.doc && c.doc.status === 'pending') { %>⏳ <span class="badge warn">Waiting for owner review</span> — uploaded <%= fmtDate(c.doc.uploaded_at) %>
-        <% } else if (c.doc) { %>✓ On file — <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% var xi = expiryInfo(c.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } } %>
+        <% } else if (c.doc) { %>✓ On file — <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.signed_by) { %> <span class="badge ok">Signed</span><% } %><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% var xi = expiryInfo(c.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } } %>
         <% } else { %><span class="badge flag">Missing</span><% } %>
         <% if (c.forms) { %><br><span class="notice">Blank form — download, fill out, sign, then upload here:</span> <% c.forms.forEach(function(f, i){ %><% if (i) { %> · <% } %><a href="<%= f.href %>" target="_blank" rel="noopener"><%= f.label %></a><% }) %><% } %>
         <% if (c.key === 'contract' && typeof chain !== 'undefined' && chain.length > 1) { %><br><span class="notice">Agreement chain:</span> <% chain.forEach(function(cd, i){ %><% if (i) { %> → <% } %><a href="/documents/<%= cd.id %>/download"><%= fmtDate(cd.uploaded_at) %></a><% if (i === chain.length - 1) { %> <span class="badge ok">current</span><% } %><% }) %><% } %>
@@ -74,8 +74,8 @@
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %></td>
-      <td><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
+      <td><% if ((doc.mime_type || '').indexOf('pdf') !== -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a> <% } %><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
     </tr>
     <% }) %>
   </table></div>
@@ -173,8 +173,9 @@
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
       <td>
+        <% if ((doc.mime_type || '').indexOf('pdf') !== -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %>
         <% if (doc.status === 'pending') { %><form class="inline" method="POST" action="/documents/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form><% } %>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/duplicate"><button class="btn small" type="submit"><%= doc.is_duplicate ? 'Unmark duplicate' : 'Mark duplicate' %></button></form>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form>

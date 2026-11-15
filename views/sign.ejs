@@ -1,0 +1,122 @@
+<%- include('partials/header', { title: 'Sign document' }) %>
+
+<h1>Sign — <%= doc.original_name %></h1>
+<p class="notice"><%= driver ? driver.name : '' %> · <%= categoryLabel %>. Signing saves a <b>new signed copy</b> as the current record — the original file stays untouched.</p>
+
+<div class="card">
+  <h2>1 · Tap where the signature goes</h2>
+  <div style="margin-bottom:8px">
+    <button class="btn small" type="button" id="prevPage">← Prev page</button>
+    <span class="notice">Page <span id="pageNow">1</span> of <span id="pageTotal">…</span></span>
+    <button class="btn small" type="button" id="nextPage">Next page →</button>
+  </div>
+  <div id="pageWrap" style="position:relative;max-width:900px;border:1px solid #ccc;background:#fff">
+    <canvas id="pageCanvas" style="display:block;width:100%"></canvas>
+    <div id="marker" style="display:none;position:absolute;width:150px;border-bottom:2px solid #c62828;pointer-events:none"></div>
+  </div>
+  <p class="notice" id="placeHint">Tap the signature line on the page above.</p>
+</div>
+
+<div class="card">
+  <h2>2 · Draw your signature</h2>
+  <canvas id="pad" width="1120" height="360" style="width:100%;max-width:560px;height:180px;border:1px solid #999;background:#fff;touch-action:none"></canvas>
+  <div style="margin-top:8px">
+    <button class="btn small" type="button" id="clearPad">Clear</button>
+  </div>
+</div>
+
+<form method="POST" action="/documents/<%= doc.id %>/sign" id="signForm">
+  <input type="hidden" name="page" id="fPage" value="1">
+  <input type="hidden" name="x" id="fX" value="">
+  <input type="hidden" name="y" id="fY" value="">
+  <input type="hidden" name="sig" id="fSig" value="">
+  <button class="btn" type="submit" id="stampBtn" disabled>Stamp signature &amp; save signed copy</button>
+  <a class="btn small" href="<%= back %>">Cancel</a>
+</form>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var docId = <%= doc.id %>;
+  var pdf = null, pageNum = 1, fx = null, fy = null, drawn = false;
+  var canvas = document.getElementById('pageCanvas');
+  var ctx = canvas.getContext('2d');
+  var wrap = document.getElementById('pageWrap');
+  var marker = document.getElementById('marker');
+  var stampBtn = document.getElementById('stampBtn');
+
+  function ready() { stampBtn.disabled = !(fx !== null && drawn); }
+
+  function renderPage() {
+    pdf.getPage(pageNum).then(function (page) {
+      var wrapW = wrap.clientWidth || 900;
+      var base = page.getViewport({ scale: 1 });
+      var scale = wrapW / base.width;
+      var viewport = page.getViewport({ scale: scale * 2 }); // 2x for sharpness
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      page.render({ canvasContext: ctx, viewport: viewport });
+      document.getElementById('pageNow').textContent = pageNum;
+      document.getElementById('fPage').value = pageNum;
+      marker.style.display = 'none'; fx = null; fy = null; ready();
+    });
+  }
+
+  pdfjsLib.getDocument('/documents/' + docId + '/raw').promise.then(function (loaded) {
+    pdf = loaded;
+    document.getElementById('pageTotal').textContent = pdf.numPages;
+    renderPage();
+  }).catch(function () {
+    document.getElementById('placeHint').textContent = 'Could not load the document preview. You can go back and try again.';
+  });
+
+  document.getElementById('prevPage').addEventListener('click', function () {
+    if (pdf && pageNum > 1) { pageNum--; renderPage(); }
+  });
+  document.getElementById('nextPage').addEventListener('click', function () {
+    if (pdf && pageNum < pdf.numPages) { pageNum++; renderPage(); }
+  });
+
+  canvas.addEventListener('click', function (ev) {
+    var r = canvas.getBoundingClientRect();
+    fx = (ev.clientX - r.left) / r.width;
+    fy = (ev.clientY - r.top) / r.height;
+    document.getElementById('fX').value = fx;
+    document.getElementById('fY').value = fy;
+    marker.style.display = 'block';
+    marker.style.left = Math.max(0, (fx * r.width) - 75) + 'px';
+    marker.style.top = (fy * r.height) + 'px';
+    document.getElementById('placeHint').textContent = 'Signature will be stamped on the red line. Tap again to move it.';
+    ready();
+  });
+
+  var pad = document.getElementById('pad');
+  var pctx = pad.getContext('2d');
+  pctx.lineWidth = 5; pctx.lineCap = 'round'; pctx.lineJoin = 'round'; pctx.strokeStyle = '#111';
+  var drawing = false, last = null;
+  function padPos(ev) {
+    var r = pad.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * (pad.width / r.width), y: (ev.clientY - r.top) * (pad.height / r.height) };
+  }
+  pad.addEventListener('pointerdown', function (ev) {
+    drawing = true; last = padPos(ev); pad.setPointerCapture(ev.pointerId);
+  });
+  pad.addEventListener('pointermove', function (ev) {
+    if (!drawing) return;
+    var p = padPos(ev);
+    pctx.beginPath(); pctx.moveTo(last.x, last.y); pctx.lineTo(p.x, p.y); pctx.stroke();
+    last = p; drawn = true; ready();
+  });
+  pad.addEventListener('pointerup', function () { drawing = false; });
+  document.getElementById('clearPad').addEventListener('click', function () {
+    pctx.clearRect(0, 0, pad.width, pad.height); drawn = false; ready();
+  });
+
+  document.getElementById('signForm').addEventListener('submit', function () {
+    document.getElementById('fSig').value = pad.toDataURL('image/png');
+  });
+})();
+</script>
+
+<%- include('partials/footer') %>
