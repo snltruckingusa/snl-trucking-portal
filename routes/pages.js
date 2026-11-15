@@ -74,7 +74,7 @@ router.get('/', requireLogin, async (req, res) => {
     );
     const expiringOwn = await query(
       `SELECT * FROM documents
-       WHERE driver_id = $1 AND expires_on IS NOT NULL AND expires_on <= CURRENT_DATE + 45
+       WHERE driver_id = $1 AND expires_on IS NOT NULL AND expires_on <= CURRENT_DATE + 60
        ORDER BY expires_on ASC LIMIT 10`,
       [scope]
     );
@@ -153,7 +153,7 @@ router.get('/', requireLogin, async (req, res) => {
   );
   const expiringDocs = await query(
     `SELECT doc.*, d.name AS driver_name FROM documents doc JOIN drivers d ON d.id = doc.driver_id
-     WHERE doc.expires_on IS NOT NULL AND doc.expires_on <= CURRENT_DATE + 30
+     WHERE doc.expires_on IS NOT NULL AND doc.expires_on <= CURRENT_DATE + 60
      ORDER BY doc.expires_on ASC LIMIT 20`
   );
   const mpgFlags = await query(
