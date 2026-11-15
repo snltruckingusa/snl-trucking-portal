@@ -108,3 +108,28 @@ tr.prev-line { background: #fffbeb; }
 @media print { .sidebar, .drawer-btn, .topnav { display: none !important; } }
 
 .badge.ok { background: #dcf5e3; color: #14532d; }
+
+/* ---- Boxed theme (Eric, 2026-11-15): panels and grids carry real
+   borders — nothing floats as bare lines. ---- */
+.card { border: 1.5px solid #b9c8d8; border-radius: 12px; box-shadow: 0 2px 8px rgba(15,42,74,.08); }
+.card > h2:first-child { background: #eef3f8; margin: -16px -16px 14px; padding: 10px 16px; border-bottom: 1.5px solid #b9c8d8; border-radius: 10px 10px 0 0; }
+table { border-collapse: separate; border-spacing: 0; border: 1.5px solid #b9c8d8; border-radius: 8px; overflow: hidden; }
+th, td { border-bottom: 1px solid #d5dee8; border-right: 1px solid #e3eaf1; padding: 8px 10px; }
+th { background: #eef3f8; }
+td:last-child, th:last-child { border-right: none; }
+tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: #f8fafc; }
+/* Checklist boxes: one box per item — status on the left, the upload
+   (or the answer) on the right. */
+.boxlist { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 14px; }
+.boxitem { border: 1.5px solid #b9c8d8; border-radius: 10px; background: #fbfcfe; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.bi-main { flex: 1 1 260px; min-width: 210px; }
+.bi-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bi-form input[type="file"] { max-width: 205px; }
+.bi-form input[type="date"] { max-width: 150px; }
+
+/* Form section boxes (Eric, 2026-11-15): each big section of a form
+   gets its own box, with air between boxes — never crammed together. */
+.groupbox { border: 1.5px solid #b9c8d8; border-radius: 10px; background: #fbfcfe; padding: 14px 16px; margin: 16px 0; }
+.groupbox .gb-title { font-weight: 700; font-size: 15px; margin-bottom: 10px; }
+.groupbox .form-row:last-child { margin-bottom: 0; }
