@@ -271,7 +271,7 @@ async function weekClosed(driverId, dateISO) {
   return r.rows.length > 0 && r.rows[0].status === 'closed';
 }
 
-const LOG_FIELDS = ['load_date', 'container_no', 'empty_container', 'bol_ref', 'delivery', 'rate', 'prepull',
+const LOG_FIELDS = ['load_date', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
   'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
@@ -353,6 +353,10 @@ router.get('/', requireLogin, async (req, res) => {
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   const evidence = await evidenceSummary(r.rows.map(l => l.id));
   const emptyMatch = await emptyMatchMap(r.rows);
+  // The driver card's Step 2 (empty return ticket) reads the MATCHED
+  // earlier load's empty-in evidence — pull those summaries in too.
+  const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
+  if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
@@ -378,21 +382,24 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
     extracted = {
       container_no: disp.container_no, bol_ref: disp.bol_ref, return_location: '',
       pickup: '', delivery: disp.delivery, appointment: apptForInput(disp.appointment),
-      empty_container: disp.empty_container, notes: disp.delivery_line,
+      empty_container: disp.empty_container, empty_pin: disp.empty_pin,
+      load_pin: disp.load_pin, notes: disp.delivery_line,
     };
-    notice = 'Dispatch order read — the empty container number, load container, and delivery city are filled in below. Check them, then save. The amounts are chart suggestions until the load-out ticket is uploaded.';
+    notice = 'Dispatch order read — the empty container and PIN, load container, PIN and BOL, and delivery city are filled in below. Check them, then save. The amounts are chart suggestions until the load-out ticket is uploaded.';
   } else {
-    extracted = ok ? parseTicketText(text) : { container_no: '', bol_ref: '', return_location: '', pickup: '', delivery: '', appointment: '' };
-    extracted.appointment = apptForInput(extracted.appointment);
+    // Not a dispatch order: this upload spot is for the dispatcher's
+    // order ONLY (Eric's flow sheet — each photo has its own labeled
+    // place). A gate ticket does not prefill a new load; the driver
+    // uploads it inside the load's own ticket step instead.
+    extracted = { container_no: '', bol_ref: '', return_location: '', pickup: '', delivery: '', appointment: '' };
+    extracted.appointment = '';
     extracted.empty_container = '';
+    extracted.empty_pin = '';
+    extracted.load_pin = '';
     extracted.notes = '';
-    const eir = ok ? parseEIR(text) : null;
     notice = ok
-      ? 'OCR suggestions below — please review and correct them before saving. (0/O and 1/I can be mixed up.)'
+      ? 'That photo does not look like a dispatch order. Tickets have their own steps: open the load below and upload the empty return ticket and the load-out ticket in their steps — or type the load in the form below first.'
       : 'OCR is unavailable right now, so no values were extracted. Fill the form in manually — the photo is attached.';
-    if (eir && eir.overweight) {
-      notice += ` ⚠ Overweight detected on the ticket: CARGO ${Math.round(eir.cargo_wt).toLocaleString()} lb over the ${eir.ow_limit.toLocaleString()} lb limit — check the Overweight field.`;
-    }
   }
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   const { where, params } = loadWhere(req);
@@ -404,6 +411,8 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   );
   const evidence = await evidenceSummary(r.rows.map(l => l.id));
   const emptyMatch = await emptyMatchMap(r.rows);
+  const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
+  if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: '', to: '', driver_id: '', status: '' },
@@ -447,8 +456,8 @@ router.post('/', requireLogin, async (req, res) => {
   const ticketsOk = finalStatus === 'confirmed';
   await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      delivery,
@@ -457,7 +466,8 @@ router.post('/', requireLogin, async (req, res) => {
      num(req.body.overweight), fsc,
      miles, finalStatus,
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
-     (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk]
+     (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk,
+     (req.body.empty_pin || '').trim() || null, (req.body.load_pin || '').trim() || null]
   );
   // Drivers land on the day they just entered, so the new load is on screen.
   res.redirect(scope ? '/loads?day=' + encodeURIComponent(req.body.load_date || '') : '/loads');
@@ -478,6 +488,8 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
     load_date: req.body.load_date,
     container_no: (req.body.container_no || '').trim() || null,
     empty_container: (req.body.empty_container || '').trim().toUpperCase() || null,
+    empty_pin: (req.body.empty_pin || '').trim() || null,
+    load_pin: (req.body.load_pin || '').trim() || null,
     bol_ref: (req.body.bol_ref || '').trim() || null,
     delivery: (req.body.delivery || '').trim() || null,
     rate: num(req.body.rate), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
@@ -515,7 +527,8 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
        appointment=$6, rate=$7, prepull=$8, reefer=$9, detention=$10, detention_status=$11,
        overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
        dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
-       tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END
+       tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END,
+       empty_pin=$20, load_pin=$21
      WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
@@ -523,7 +536,8 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
      newVals.rate, newVals.prepull, newVals.reefer, newVals.detention, detentionStatus,
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
-     (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id]
+     (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
+     newVals.empty_pin, newVals.load_pin]
   );
   res.redirect('/loads');
 });
@@ -554,6 +568,30 @@ router.post('/:id/progress', requireLogin, uploadMem.single('evidence'), async (
   res.redirect(req.get('Referrer') || '/');
 });
 
+// Keep a load's execution progress in step with the evidence on file:
+// when the photo for the next stage exists, advance — possibly more
+// than once (e.g. the load-out ticket uploaded after the POD).
+async function advanceProgress(load) {
+  let prog = load.progress;
+  for (let i = 0; i < 3; i++) {
+    const nxt = nextProgress(prog);
+    if (!nxt || nxt === prog) break;
+    const st = PROGRESS_EVIDENCE[nxt];
+    if (!st) break;
+    const cnt = await query(
+      'SELECT COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage = $2',
+      [load.id, st]
+    );
+    if (parseInt(cnt.rows[0].n, 10) < 1) break;
+    if (nxt === 'returned') {
+      await query('UPDATE loads SET progress = $1, returned_on = COALESCE(returned_on, CURRENT_DATE) WHERE id = $2', [nxt, load.id]);
+    } else {
+      await query('UPDATE loads SET progress = $1 WHERE id = $2', [nxt, load.id]);
+    }
+    prog = nxt;
+  }
+}
+
 // Attach an evidence photo to a load at any time (a stage the driver
 // already passed, a substitute return/prepull ticket, and so on).
 router.post('/:id/evidence', requireLogin, uploadMem.single('photo'), async (req, res) => {
@@ -561,32 +599,35 @@ router.post('/:id/evidence', requireLogin, uploadMem.single('photo'), async (req
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
   if (!existing.rows.length) return res.redirect('/loads');
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
-  const stage = ['load_out', 'pod', 'empty_in', 'detention', 'other'].includes(req.body.stage)
+  const stage = ['load_out', 'pod', 'empty_in', 'detention', 'other', 'empty_return'].includes(req.body.stage)
     ? req.body.stage : 'other';
+  if (req.file && stage === 'empty_return') {
+    // Eric's flow sheet: the day's first terminal photo is the EMPTY
+    // RETURN ticket — it belongs to the EARLIER load whose container
+    // this is, so it is filed there as that load's empty-in ticket
+    // (which also completes that load and settles its reefer half).
+    const me = existing.rows[0];
+    let filed = false;
+    if (me.empty_container) {
+      const prev = await query(
+        `SELECT * FROM loads WHERE driver_id = $1 AND id <> $2
+           AND UPPER(container_no) = $3 ORDER BY load_date DESC, id DESC LIMIT 1`,
+        [me.driver_id, me.id, String(me.empty_container).toUpperCase()]
+      );
+      if (prev.rows.length) {
+        const saved = await saveEvidence(prev.rows[0].id, 'empty_in', req.file, req.session.user.username);
+        await applyTicketMoney(prev.rows[0], 'empty_in', saved.extracted, req.session.user.username);
+        await advanceProgress(prev.rows[0]);
+        filed = true;
+      }
+    }
+    if (!filed) await saveEvidence(me.id, 'other', req.file, req.session.user.username);
+    return res.redirect(req.get('Referrer') || '/loads');
+  }
   if (req.file) {
     const saved = await saveEvidence(existing.rows[0].id, stage, req.file, req.session.user.username);
     await applyTicketMoney(existing.rows[0], stage, saved.extracted, req.session.user.username);
-    // Keep the execution progress in step with the evidence on file:
-    // when the photo for the next stage exists, advance — possibly more
-    // than once (e.g. the load-out ticket uploaded after the POD).
-    let prog = existing.rows[0].progress;
-    for (let i = 0; i < 3; i++) {
-      const nxt = nextProgress(prog);
-      if (!nxt || nxt === prog) break;
-      const st = PROGRESS_EVIDENCE[nxt];
-      if (!st) break;
-      const cnt = await query(
-        'SELECT COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage = $2',
-        [existing.rows[0].id, st]
-      );
-      if (parseInt(cnt.rows[0].n, 10) < 1) break;
-      if (nxt === 'returned') {
-        await query('UPDATE loads SET progress = $1, returned_on = COALESCE(returned_on, CURRENT_DATE) WHERE id = $2', [nxt, existing.rows[0].id]);
-      } else {
-        await query('UPDATE loads SET progress = $1 WHERE id = $2', [nxt, existing.rows[0].id]);
-      }
-      prog = nxt;
-    }
+    await advanceProgress(existing.rows[0]);
   }
   res.redirect(req.get('Referrer') || '/loads');
 });
