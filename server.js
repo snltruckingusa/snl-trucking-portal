@@ -34,8 +34,8 @@ app.locals.expiringWithin = expiringWithin;
 app.locals.expiryInfo = expiryInfo;
 app.locals.laneFor = matchLane;
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
