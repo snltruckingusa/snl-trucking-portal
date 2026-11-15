@@ -18,6 +18,7 @@ const {
 } = require('../lib/helpers');
 const { matchLane } = require('../lib/rates');
 const { parseEIR } = require('../lib/eir');
+const { parseDispatchText } = require('../lib/dispatch');
 
 const router = express.Router();
 
@@ -55,9 +56,16 @@ function parseTicketText(text) {
     || t.match(/\b(\d{7})\b/);
   if (ref) out.bol_ref = ref[1];
 
-  // Empty return location: line after "Return" / "Empty Return" / "Off-hire"
+  // Empty return location: line after "Return" / "Empty Return" / "Off-hire".
+  // On GPA tickets that line often carries the container number itself —
+  // strip container tokens and labels so a bare number never lands here.
   const ret = t.match(/(?:EMPTY\s*RETURN|RETURN\s*(?:TO|LOCATION)|OFF[-\s]?HIRE)\s*[:#.]?\s*(.+)/i);
-  if (ret) out.return_location = ret[1].trim().slice(0, 200);
+  if (ret) {
+    out.return_location = ret[1]
+      .replace(/[A-Za-z]{4}\s?\d{7}/g, '')
+      .replace(/CONTAINER\s*#?/gi, '')
+      .trim().slice(0, 200);
+  }
 
   const pick = t.match(/PICK[-\s]?UP\s*[:#.]?\s*(.+)/i);
   if (pick) out.pickup = pick[1].trim().slice(0, 200);
@@ -70,6 +78,24 @@ function parseTicketText(text) {
   if (appt) out.appointment = appt[1];
 
   return out;
+}
+
+// Convert an OCR appointment string ("11/15/2026 10:30 AM") into the
+// value a datetime-local input understands ("2026-11-15T10:30").
+function apptForInput(s) {
+  if (!s) return '';
+  const m = String(s).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (m) {
+    let y = m[3].length === 2 ? '20' + m[3] : m[3];
+    let h = parseInt(m[4], 10);
+    if (m[6] && /PM/i.test(m[6]) && h < 12) h += 12;
+    if (m[6] && /AM/i.test(m[6]) && h === 12) h = 0;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${y}-${p(m[1])}-${p(m[2])}T${p(h)}:${m[5]}`;
+  }
+  const iso = String(s).match(/(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/);
+  if (iso) return iso[1] + 'T' + iso[2];
+  return '';
 }
 
 const { spawn } = require('child_process');
@@ -148,6 +174,89 @@ async function saveEvidence(loadId, stage, file, username) {
   return { id: r.rows[0].id, extracted };
 }
 
+// Money facts come from the TICKETS (Eric, 2026-11-14): when a load-out
+// ticket is uploaded, the overweight and reefer amounts it proves are
+// applied to the still-pending load automatically (and logged), so the
+// amounts the owner approves are the ticket's amounts — not typed ones.
+// A ticket whose container number disagrees with the load is recorded
+// in the change log for the owner to check; nothing is applied blindly
+// to a confirmed load.
+async function applyTicketMoney(load, stage, extracted, username) {
+  if (!extracted) return;
+  if (extracted.container_no && load.container_no
+      && extracted.container_no !== String(load.container_no).toUpperCase()) {
+    await query(
+      'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+      [load.id, username || null, 'ticket_container', String(load.container_no), extracted.container_no + ' (read from ticket — please check)']
+    );
+  }
+  if (load.status !== 'pending') return;
+  if (stage === 'load_out') {
+    if (extracted.overweight && num(load.overweight) === 0) {
+      const lane = matchLane(load.delivery);
+      if (lane && lane.ow) {
+        await query('UPDATE loads SET overweight = $1 WHERE id = $2', [lane.ow, load.id]);
+        await query(
+          'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+          [load.id, username || null, 'overweight', '0', String(lane.ow) + ' (auto from load-out ticket)']
+        );
+        load.overweight = lane.ow;
+      }
+    }
+    if (extracted.is_reefer && num(load.reefer) === 0) {
+      // Reefer $75 = $37.50 genset install (this leg) + $37.50 removal
+      // when the empty comes back.
+      await query('UPDATE loads SET reefer = 37.50 WHERE id = $1', [load.id]);
+      await query(
+        'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+        [load.id, username || null, 'reefer', '0', '37.50 (genset install — auto from load-out ticket)']
+      );
+      load.reefer = 37.5;
+    }
+  }
+  if (stage === 'empty_in' && num(load.reefer) === 37.5) {
+    const lo = await query(
+      "SELECT extracted FROM load_evidence WHERE load_id = $1 AND stage = 'load_out' ORDER BY created_at DESC LIMIT 1",
+      [load.id]
+    );
+    const wasReefer = (lo.rows[0] && lo.rows[0].extracted && lo.rows[0].extracted.is_reefer) || extracted.is_reefer;
+    if (wasReefer) {
+      await query('UPDATE loads SET reefer = 75 WHERE id = $1', [load.id]);
+      await query(
+        'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+        [load.id, username || null, 'reefer', '37.50', '75 (genset removal — auto from empty-in ticket)']
+      );
+      load.reefer = 75;
+    }
+  }
+}
+
+// For each listed load that returns an empty today, find the driver's
+// earlier load that container belongs to — the load whose Step 4
+// (empty-in ticket) this empty closes.
+async function emptyMatchMap(loads) {
+  const map = {};
+  const targets = loads.filter(l => l.empty_container);
+  if (!targets.length) return map;
+  const driverIds = [...new Set(targets.map(l => l.driver_id))];
+  const r = await query(
+    'SELECT id, driver_id, container_no, load_date, delivery FROM loads WHERE driver_id = ANY($1) AND container_no IS NOT NULL',
+    [driverIds]
+  );
+  const byKey = {};
+  r.rows.forEach(x => {
+    const k = x.driver_id + '|' + String(x.container_no).toUpperCase();
+    (byKey[k] = byKey[k] || []).push(x);
+  });
+  for (const l of targets) {
+    const cands = (byKey[l.driver_id + '|' + String(l.empty_container).toUpperCase()] || [])
+      .filter(x => x.id !== l.id)
+      .sort((a, b) => new Date(b.load_date) - new Date(a.load_date));
+    if (cands[0]) map[l.id] = cands[0];
+  }
+  return map;
+}
+
 // Is the settlement for this driver's week of `dateISO` already closed?
 // After Friday close-out, driver entries for that week lock (correction
 // policy 2026-11-13): corrections go through the owner, or land as a
@@ -162,7 +271,7 @@ async function weekClosed(driverId, dateISO) {
   return r.rows.length > 0 && r.rows[0].status === 'closed';
 }
 
-const LOG_FIELDS = ['load_date', 'container_no', 'bol_ref', 'delivery', 'rate', 'prepull',
+const LOG_FIELDS = ['load_date', 'container_no', 'empty_container', 'bol_ref', 'delivery', 'rate', 'prepull',
   'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
@@ -227,21 +336,47 @@ router.get('/', requireLogin, async (req, res) => {
   );
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   const evidence = await evidenceSummary(r.rows.map(l => l.id));
+  const emptyMatch = await emptyMatchMap(r.rows);
   res.render('loads', {
-    loads: r.rows, drivers: drivers.rows, evidence,
+    loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
-    ocr: null, ocrNotice: null,
+    ocr: null, ocrNotice: null, notice: req.query.notice || null,
   });
 });
 
 // OCR upload: photo -> extracted suggestions -> prefill form (not saved yet).
+// A DISPATCH capture (the dispatcher's bundled WhatsApp order) is read
+// with the dispatch parser: empty container number only for the return
+// leg, load container + delivery CITY for the load leg. A gate ticket /
+// POD photo keeps the original ticket parser.
 router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   if (!req.file) return res.redirect('/loads');
   const photoPath = '/uploads/tickets/' + req.file.filename;
   const { text, ok } = await ocrImage(req.file.path);
-  const extracted = ok ? parseTicketText(text) : { container_no: '', bol_ref: '', return_location: '', pickup: '', delivery: '', appointment: '' };
-  const eir = ok ? parseEIR(text) : null;
+  const disp = ok ? parseDispatchText(text) : { is_dispatch: false };
+  let extracted;
+  let notice;
+  if (disp.is_dispatch) {
+    extracted = {
+      container_no: disp.container_no, bol_ref: disp.bol_ref, return_location: '',
+      pickup: '', delivery: disp.delivery, appointment: apptForInput(disp.appointment),
+      empty_container: disp.empty_container, notes: disp.delivery_line,
+    };
+    notice = 'Dispatch order read — the empty container number, load container, and delivery city are filled in below. Check them, then save. The amounts are chart suggestions until the load-out ticket is uploaded.';
+  } else {
+    extracted = ok ? parseTicketText(text) : { container_no: '', bol_ref: '', return_location: '', pickup: '', delivery: '', appointment: '' };
+    extracted.appointment = apptForInput(extracted.appointment);
+    extracted.empty_container = '';
+    extracted.notes = '';
+    const eir = ok ? parseEIR(text) : null;
+    notice = ok
+      ? 'OCR suggestions below — please review and correct them before saving. (0/O and 1/I can be mixed up.)'
+      : 'OCR is unavailable right now, so no values were extracted. Fill the form in manually — the photo is attached.';
+    if (eir && eir.overweight) {
+      notice += ` ⚠ Overweight detected on the ticket: CARGO ${Math.round(eir.cargo_wt).toLocaleString()} lb over the ${eir.ow_limit.toLocaleString()} lb limit — check the Overweight field.`;
+    }
+  }
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   const { where, params } = loadWhere(req);
   const r = await query(
@@ -251,18 +386,13 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
     params
   );
   const evidence = await evidenceSummary(r.rows.map(l => l.id));
-  let notice = ok
-    ? 'OCR suggestions below — please review and correct them before saving. (0/O and 1/I can be mixed up.)'
-    : 'OCR is unavailable right now, so no values were extracted. Fill the form in manually — the photo is attached.';
-  if (eir && eir.overweight) {
-    notice += ` ⚠ Overweight detected on the ticket: CARGO ${Math.round(eir.cargo_wt).toLocaleString()} lb over the ${eir.ow_limit.toLocaleString()} lb limit — check the Overweight field.`;
-  }
+  const emptyMatch = await emptyMatchMap(r.rows);
   res.render('loads', {
-    loads: r.rows, drivers: drivers.rows, evidence,
+    loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
     filters: { from: '', to: '', driver_id: '', status: '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
     ocr: { ...extracted, ticket_photo: photoPath },
-    ocrNotice: notice,
+    ocrNotice: notice, notice: null,
   });
 });
 
@@ -291,18 +421,25 @@ router.post('/', requireLogin, async (req, res) => {
   const detentionAmt = num(req.body.detention);
   // Driver-entered detention is a CLAIM: pending until the owner approves.
   const detentionStatus = detentionAmt > 0 ? (scope ? 'pending' : 'approved') : 'none';
+  const finalStatus = !scope && req.body.status === 'confirmed' ? 'confirmed' : 'pending';
+  // Staged approvals: the owner's own entries are dispatch-approved by
+  // definition; a confirmed entry is fully approved. Driver entries
+  // wait for the owner's dispatch approval.
+  const dispatchOk = !scope;
+  const ticketsOk = finalStatus === 'confirmed';
   await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      delivery,
      appointment && !isNaN(appointment) ? appointment : null,
      rate, num(req.body.prepull), num(req.body.reefer), detentionAmt, detentionStatus,
      num(req.body.overweight), fsc,
-     miles, !scope && req.body.status === 'confirmed' ? 'confirmed' : 'pending',
-     req.body.ticket_photo || null, (req.body.notes || '').trim() || null]
+     miles, finalStatus,
+     req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
+     (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk]
   );
   res.redirect('/loads');
 });
@@ -321,6 +458,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   const newVals = {
     load_date: req.body.load_date,
     container_no: (req.body.container_no || '').trim() || null,
+    empty_container: (req.body.empty_container || '').trim().toUpperCase() || null,
     bol_ref: (req.body.bol_ref || '').trim() || null,
     delivery: (req.body.delivery || '').trim() || null,
     rate: num(req.body.rate), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
@@ -350,18 +488,23 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   if (newVals.detention !== num(old.detention)) {
     detentionStatus = newVals.detention > 0 ? (scope ? 'pending' : 'approved') : 'none';
   }
+  // The owner setting "confirmed" in the edit form is his review of the
+  // whole load — it completes both staged approvals at once.
+  const flagsOk = !scope && status === 'confirmed';
   await query(
     `UPDATE loads SET load_date=$1, container_no=$2, bol_ref=$3, pickup=$4, delivery=$5,
        appointment=$6, rate=$7, prepull=$8, reefer=$9, detention=$10, detention_status=$11,
-       overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16
-     WHERE id=$17`,
+       overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
+       dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
+       tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END
+     WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
      appointment && !isNaN(appointment) ? appointment : null,
      newVals.rate, newVals.prepull, newVals.reefer, newVals.detention, detentionStatus,
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
-     (req.body.notes || '').trim() || null, req.params.id]
+     (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id]
   );
   res.redirect('/loads');
 });
@@ -386,7 +529,8 @@ router.post('/:id/progress', requireLogin, uploadMem.single('evidence'), async (
     await query('UPDATE loads SET progress = $1 WHERE id = $2', [next, req.params.id]);
   }
   if (req.file && PROGRESS_EVIDENCE[next]) {
-    await saveEvidence(existing.rows[0].id, PROGRESS_EVIDENCE[next], req.file, req.session.user.username);
+    const saved = await saveEvidence(existing.rows[0].id, PROGRESS_EVIDENCE[next], req.file, req.session.user.username);
+    await applyTicketMoney(existing.rows[0], PROGRESS_EVIDENCE[next], saved.extracted, req.session.user.username);
   }
   res.redirect(req.get('Referrer') || '/');
 });
@@ -401,7 +545,8 @@ router.post('/:id/evidence', requireLogin, uploadMem.single('photo'), async (req
   const stage = ['load_out', 'pod', 'empty_in', 'detention', 'other'].includes(req.body.stage)
     ? req.body.stage : 'other';
   if (req.file) {
-    await saveEvidence(existing.rows[0].id, stage, req.file, req.session.user.username);
+    const saved = await saveEvidence(existing.rows[0].id, stage, req.file, req.session.user.username);
+    await applyTicketMoney(existing.rows[0], stage, saved.extracted, req.session.user.username);
     // Keep the execution progress in step with the evidence on file:
     // when the photo for the next stage exists, advance — possibly more
     // than once (e.g. the load-out ticket uploaded after the POD).
@@ -496,12 +641,42 @@ router.post('/:id/detention-reject', requireLogin, requireAdmin, async (req, res
   res.redirect(req.get('Referrer') || '/loads');
 });
 
+// Staged owner approvals (Eric, 2026-11-14): the dispatch first, then
+// the tickets, then the final confirm. The ticket approval requires
+// BOTH terminal tickets on file — the load-out ticket (money facts)
+// and the empty-in ticket (the job's closing document).
+router.post('/:id/approve-dispatch', requireLogin, requireAdmin, async (req, res) => {
+  await query('UPDATE loads SET dispatch_ok = TRUE WHERE id = $1', [req.params.id]);
+  res.redirect(req.get('Referrer') || '/loads');
+});
+
+router.post('/:id/approve-tickets', requireLogin, requireAdmin, async (req, res) => {
+  const cnt = await query(
+    "SELECT stage, COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage IN ('load_out','empty_in') GROUP BY stage",
+    [req.params.id]
+  );
+  const have = {};
+  cnt.rows.forEach(r => { have[r.stage] = parseInt(r.n, 10); });
+  if (!have.load_out || !have.empty_in) {
+    return res.redirect('/loads?notice=' + encodeURIComponent('Tickets are not all in yet — ticket approval needs the load-out ticket AND the empty-in ticket on file.'));
+  }
+  await query('UPDATE loads SET tickets_ok = TRUE WHERE id = $1', [req.params.id]);
+  res.redirect(req.get('Referrer') || '/loads');
+});
+
 router.post('/:id/confirm', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);
   if (scope) return res.status(403).send('Only the owner can confirm loads.');
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
   if (!existing.rows.length) return res.redirect('/loads');
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+  const load = existing.rows[0];
+  if (!load.dispatch_ok) {
+    return res.redirect('/loads?notice=' + encodeURIComponent('Approve the dispatch first — then the tickets — then confirm.'));
+  }
+  if (!load.tickets_ok) {
+    return res.redirect('/loads?notice=' + encodeURIComponent('Approve the tickets before confirming — the settlement amounts must come from the tickets.'));
+  }
   await query("UPDATE loads SET status = 'confirmed' WHERE id = $1", [req.params.id]);
   res.redirect('/loads');
 });
