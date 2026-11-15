@@ -41,6 +41,7 @@
         <% } else if (c.doc) { %>✓ On file — <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% var xi = expiryInfo(c.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } } %>
         <% } else { %><span class="badge flag">Missing</span><% } %>
         <% if (c.forms) { %><br><span class="notice">Blank form — download, fill out, sign, then upload here:</span> <% c.forms.forEach(function(f, i){ %><% if (i) { %> · <% } %><a href="<%= f.href %>" target="_blank" rel="noopener"><%= f.label %></a><% }) %><% } %>
+        <% if (c.key === 'contract' && typeof chain !== 'undefined' && chain.length > 1) { %><br><span class="notice">Agreement chain:</span> <% chain.forEach(function(cd, i){ %><% if (i) { %> → <% } %><a href="/documents/<%= cd.id %>/download"><%= fmtDate(cd.uploaded_at) %></a><% if (i === chain.length - 1) { %> <span class="badge ok">current</span><% } %><% }) %><% } %>
       </div>
       <% if (c.who === 'Driver') { %>
       <form class="bi-form" method="POST" action="/documents/upload" enctype="multipart/form-data">
@@ -73,7 +74,7 @@
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %></td>
       <td><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
     </tr>
     <% }) %>
@@ -154,6 +155,13 @@
   </form>
 </div>
 
+<% if (typeof chain !== 'undefined' && chain.length > 1) { %>
+<div class="card">
+  <h2>Agreement chain</h2>
+  <p><% chain.forEach(function(cd, i){ %><% if (i) { %> → <% } %><a href="/documents/<%= cd.id %>/download"><%= cd.original_name %></a> <span class="notice">(<%= fmtDate(cd.uploaded_at) %>)</span><% if (i === chain.length - 1) { %> <span class="badge ok">current</span><% } %><% }) %></p>
+  <p class="notice">Original agreement first, then each amendment in order. The newest is the current record.</p>
+</div>
+<% } %>
 <div class="card">
   <h2>Documents</h2>
   <% if (!docs.length) { %><p class="notice">No documents yet.</p><% } else { %>
@@ -165,9 +173,10 @@
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %></td>
       <td>
         <% if (doc.status === 'pending') { %><form class="inline" method="POST" action="/documents/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form><% } %>
+        <form class="inline" method="POST" action="/documents/<%= doc.id %>/duplicate"><button class="btn small" type="submit"><%= doc.is_duplicate ? 'Unmark duplicate' : 'Mark duplicate' %></button></form>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form>
       </td>
     </tr>
