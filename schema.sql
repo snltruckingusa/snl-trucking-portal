@@ -382,3 +382,16 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_state TEXT;
 -- newest CONFIRMED document.
 ALTER TABLE vehicle_docs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'confirmed';
 ALTER TABLE vehicle_docs ADD COLUMN IF NOT EXISTS uploaded_by TEXT;
+
+-- Public website messages (contact form on the public home page).
+-- Stored in the portal only — never emailed, never shown publicly.
+-- Eric reads them on the admin dashboard (Nov 15, 2026).
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  contact     TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'new',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  read_at     TIMESTAMPTZ
+);
