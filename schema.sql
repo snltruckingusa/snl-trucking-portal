@@ -298,3 +298,31 @@ CREATE TABLE IF NOT EXISTS prepulls (
 -- themselves in the profile build; admin can enter them meanwhile.
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS phone TEXT;
+
+-- My File build (2026-11-14, Eric): the driver's own section of the
+-- portal — profile self-edit with owner review (the approval chain:
+-- driver submits, owner confirms), a DQF document center whose files
+-- live IN the database (disk uploads were lost on every redeploy),
+-- training records, and company-record status lines. Driver uploads
+-- land as 'pending' until the owner confirms them; documents that
+-- were already on file stay 'confirmed'.
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS emergency_name TEXT;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'confirmed';
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_category_check;
+ALTER TABLE documents ADD CONSTRAINT documents_category_check
+  CHECK (category IN ('mvr','medical_card','cdl','registration','contract','twic','w9','drug_test','clearinghouse','road_test','application','other'));
+
+CREATE TABLE IF NOT EXISTS profile_changes (
+  id SERIAL PRIMARY KEY,
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  address TEXT,
+  phone TEXT,
+  emergency_name TEXT,
+  emergency_phone TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at TIMESTAMPTZ
+);
