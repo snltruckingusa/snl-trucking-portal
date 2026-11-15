@@ -14,7 +14,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const {
   requireLogin, requireAdmin, scopedDriverId, num, fmtDate, isAdmin, nextProgress,
-  weekStart, toISODate,
+  weekStart, toISODate, addDays,
 } = require('../lib/helpers');
 const { matchLane } = require('../lib/rates');
 const { parseEIR } = require('../lib/eir');
@@ -327,7 +327,23 @@ function loadWhere(req) {
 }
 
 router.get('/', requireLogin, async (req, res) => {
-  const { where, params } = loadWhere(req);
+  const scope = scopedDriverId(req);
+  let day = null, prevDay = null, nextDay = null;
+  let where, params;
+  if (scope && !req.query.from && !req.query.to) {
+    // Drivers work one day at a time (Eric, 2026-11-14): the list shows
+    // a single day — today by default — with prev/next-day navigation,
+    // instead of every date on one long page.
+    day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '') ? req.query.day : toISODate(new Date());
+    const d = new Date(day + 'T00:00:00');
+    prevDay = toISODate(addDays(d, -1));
+    nextDay = toISODate(addDays(d, 1));
+    where = 'WHERE l.driver_id = $1 AND l.load_date = $2';
+    params = [scope, day];
+    if (req.query.status) { params.push(req.query.status); where += ` AND l.status = $${params.length}`; }
+  } else {
+    ({ where, params } = loadWhere(req));
+  }
   const r = await query(
     `SELECT l.*, d.name AS driver_name, d.truck_number FROM loads l
      JOIN drivers d ON d.id = l.driver_id ${where}
@@ -342,6 +358,7 @@ router.get('/', requireLogin, async (req, res) => {
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
     ocr: null, ocrNotice: null, notice: req.query.notice || null,
+    day, prevDay, nextDay,
   });
 });
 
@@ -393,6 +410,7 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
     ocr: { ...extracted, ticket_photo: photoPath },
     ocrNotice: notice, notice: null,
+    day: null, prevDay: null, nextDay: null,
   });
 });
 
@@ -441,7 +459,8 @@ router.post('/', requireLogin, async (req, res) => {
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
      (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk]
   );
-  res.redirect('/loads');
+  // Drivers land on the day they just entered, so the new load is on screen.
+  res.redirect(scope ? '/loads?day=' + encodeURIComponent(req.body.load_date || '') : '/loads');
 });
 
 router.post('/:id/edit', requireLogin, async (req, res) => {
