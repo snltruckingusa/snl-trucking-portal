@@ -366,3 +366,11 @@ ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 -- that, not the login, is the accountability.
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','driver','mechanic'));
+
+-- Driver Overview profile fields (2026-11-15): date of birth, email and
+-- the license (CDL) number + issuing state live ON the driver record —
+-- the FMCSA driver roster asks for exactly these.
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS dob DATE;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_no TEXT;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_state TEXT;

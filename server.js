@@ -11,7 +11,7 @@ const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
 const { seed } = require('./seed');
-const { money, fmtDate, fmtDateTimeLocal, loadTotal, PROGRESS_LABELS, expiringWithin } = require('./lib/helpers');
+const { money, fmtDate, fmtDateTimeLocal, loadTotal, PROGRESS_LABELS, expiringWithin, expiryInfo } = require('./lib/helpers');
 const { matchLane } = require('./lib/rates');
 
 const app = express();
@@ -31,6 +31,7 @@ app.locals.fmtDateTimeLocal = fmtDateTimeLocal;
 app.locals.loadTotal = loadTotal;
 app.locals.PROGRESS_LABELS = PROGRESS_LABELS;
 app.locals.expiringWithin = expiringWithin;
+app.locals.expiryInfo = expiryInfo;
 app.locals.laneFor = matchLane;
 
 app.use(express.urlencoded({ extended: true }));
