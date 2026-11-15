@@ -22,7 +22,7 @@
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
     else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
-    else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
+    else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
   } else if (user && user.role === 'driver') {
     top = [ ['/', 'Home'], ['/loads', 'Loads'], ['/settlement', 'Pay'], ['/documents', 'My File'], ['/mytruck', 'My Truck'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Home'], ['/safety', 'Safety Training'] ]; }
@@ -30,7 +30,7 @@
     else if (p.startsWith('/settlement')) { sec = 'pay'; subs = [ ['/settlement', 'Settlement'] ]; }
     else if (p.startsWith('/documents')) { sec = 'myfile'; subs = [ ['/documents', 'My File'] ]; }
     else if (p.startsWith('/mytruck')) { sec = 'mytruck'; subs = [ ['/mytruck', 'My Truck'] ]; }
-    else { sec = 'more'; subs = [ ['/more', 'More'], ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
+    else { sec = 'more'; subs = [ ['/more', 'More'], ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
   }
   // Longest matching sidebar href is the active one.
   var activeSub = '';
