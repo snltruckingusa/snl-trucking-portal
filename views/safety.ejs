@@ -1,6 +1,29 @@
 <%- include('partials/header', { title: 'Safety Education' }) %>
 <h1>Safety Education</h1>
 
+<% if (!isAdmin) { %>
+<div class="card">
+  <h2>Safety basics — required reading</h2>
+  <p>Read each topic below and tap <b>"I have read and understand"</b> at the end of the topic. Your tap is recorded with your name and the date — that record is your training file.</p>
+  <p><b>Your progress: <%= Object.keys(acks).length %> of <%= topics.length %> topics completed.</b></p>
+  <% if (Object.keys(acks).length === topics.length) { %><p>✅ All topics completed. Thank you — drive safe.</p><% } %>
+</div>
+<% } else { %>
+<div class="card">
+  <h2>Driver completion</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Driver</th><th>Completed</th><th>Still missing</th></tr>
+    <% grid.forEach(function(g){ %>
+    <tr>
+      <td><%= g.name %></td>
+      <td class="num"><%= Object.keys(g.done).length %> / <%= topics.length %></td>
+      <td><%= topics.filter(function(t){ return !g.done[t.key]; }).map(function(t){ return t.title; }).join('; ') || '—' %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+<% } %>
+
 <div class="card">
   <h2>Episode 1 — Safety First</h2>
   <p class="notice">The YouTube training video (Episode 1) will be embedded here.</p>
@@ -19,5 +42,186 @@
     <li>Wear safety gear during container work and follow port rules.</li>
     <li>If there is an accident or a contact incident, notify the company right away and secure photos and the other vehicle's plate number.</li>
   </ul>
+</div>
+
+<div class="card" id="topic-inspection">
+  <h2>1. Vehicle inspection — before you roll</h2>
+  <ul>
+    <li>Complete your DVIR in the ELD app before driving — every shift, no exceptions.</li>
+    <li>Check brakes, tires, lights, mirrors, horn, steering, and look for fluid leaks.</li>
+    <li>Check the coupling: fifth wheel locked, air lines and electrical cord connected, landing gear fully up.</li>
+    <li>Check all four twist locks on the container — locked, every time.</li>
+    <li>A defect that affects safety means <b>do not drive</b>. Report it right away and record it in the ELD.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['inspection']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['inspection']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="inspection"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-container">
+  <h2>2. Container &amp; chassis safety</h2>
+  <ul>
+    <li>A loaded container has a high center of gravity. Slow down well before ramps, curves, and turns.</li>
+    <li>Confirm the container doors are closed and latched before you move.</li>
+    <li>Know the weight limits: cargo over 39,000 lbs (20 ft), 45,000 lbs (40 ft), or 44,000 lbs (reefer 40 ft) is overweight — follow the overweight procedure.</li>
+    <li>If a container or chassis looks damaged, do not pull it. Report it and take a photo.</li>
+    <li>Never stand under a raised load, or between a container and a wall or another vehicle.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['container']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['container']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="container"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-speed">
+  <h2>3. Speed, distance &amp; braking</h2>
+  <ul>
+    <li>Company rule: never over 70 mph. Posted limits below that still apply.</li>
+    <li>A loaded truck needs far more room to stop. Keep at least 7 seconds of following distance — more in rain or traffic.</li>
+    <li>Slow down <b>before</b> curves and ramps, not in them. Rollover is the #1 container accident.</li>
+    <li>On downgrades, downshift early and use the engine brake before speed builds. Never ride the service brakes downhill.</li>
+    <li>If the load pushes or sways, slow down smoothly. Do not brake hard mid-turn.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['speed']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['speed']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="speed"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-backing">
+  <h2>4. Backing &amp; blind spots</h2>
+  <ul>
+    <li>Backing is where most yard accidents happen. Avoid it when you can — plan your path first.</li>
+    <li><b>GOAL: Get Out And Look.</b> Walk the path before you back up, every time it is not clearly open.</li>
+    <li>Use mirrors and the camera, but never trust them alone — the blind spots behind and beside the trailer are large.</li>
+    <li>Back slowly, windows down. Tap the horn before you start if people are near.</li>
+    <li>If someone is in your path, stop. Wait until the area is clear.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['backing']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['backing']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="backing"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-fatigue">
+  <h2>5. Fatigue &amp; hours of service</h2>
+  <ul>
+    <li>Federal limits: 11 hours of driving after 10 hours off, inside a 14-hour duty window. Know your clock before you start.</li>
+    <li>Drowsy driving is as dangerous as drunk driving. If you are fighting sleep, stop somewhere safe and rest.</li>
+    <li><b>Never edit your ELD records.</b> If a load cannot be done legally in your hours, tell dispatch early — the schedule changes, not the log.</li>
+    <li>Plan your day: fuel, food, and rest stops decided before you roll.</li>
+    <li>Report any schedule that regularly pushes your hours. That is a dispatch problem, not something to hide.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['fatigue']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['fatigue']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="fatigue"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-distraction">
+  <h2>6. No phone while rolling</h2>
+  <ul>
+    <li>Georgia is hands-free: no holding a phone while driving — calls, texts, and apps included.</li>
+    <li>Dispatch messages are read when you are stopped. Nothing on WhatsApp is urgent enough to read at 65 mph.</li>
+    <li>Set your navigation and music before you move. If you must change something, pull over safely first.</li>
+    <li>Eating, paperwork, and reaching for items wait for the next stop.</li>
+    <li>Eyes off the road for 5 seconds at highway speed means driving blind for the length of a football field.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['distraction']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['distraction']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="distraction"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-seatbelt">
+  <h2>7. Seat belts</h2>
+  <ul>
+    <li>Wear your seat belt every trip, every time — yard moves included.</li>
+    <li>In a crash, the belt is what keeps you in control of the truck — and alive.</li>
+    <li>Wear it snugly across your hips and chest. A loose belt does not protect you.</li>
+    <li>No belt is a DOT inspection violation and a company rule violation.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['seatbelt']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['seatbelt']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="seatbelt"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-weather">
+  <h2>8. Weather, night &amp; deer</h2>
+  <ul>
+    <li>Rain, fog, and wind: slow down and double your following distance. Wet roads double your stopping distance.</li>
+    <li>If conditions feel unsafe, park somewhere safe and tell dispatch. No load is worth a wreck.</li>
+    <li>Deer are most active at dawn and dusk, especially in the fall. Scan the road edges — where there is one deer, there are usually more.</li>
+    <li>If a deer steps out: brake firmly in a <b>straight line</b>. Never swerve — swerving a loaded truck causes rollovers and jackknives.</li>
+    <li>Keep your headlights clean and on. If you cannot see, slow down until you can.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['weather']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['weather']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="weather"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-port">
+  <h2>9. Port &amp; terminal safety</h2>
+  <ul>
+    <li>Carry your TWIC and follow all Georgia Ports rules inside the terminal.</li>
+    <li>Wear your safety vest outside the cab in terminal and yard areas.</li>
+    <li>Watch for yard hostlers, cranes, and pedestrians. Terminal equipment always has the right of way.</li>
+    <li>Stay in the designated lanes and waiting areas. Never walk behind a container that is being moved.</li>
+    <li>Obey terminal speed limits — they are enforced, and port tickets are still violations.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['port']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['port']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="port"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-accident">
+  <h2>10. If an accident happens</h2>
+  <ul>
+    <li>Stop. Secure the scene, set your triangles, and check for injuries. Call 911 first if anyone is hurt.</li>
+    <li>Get the other vehicle's <b>license plate</b> — the single most important detail. Then take photos of everything: vehicles, damage, the road, documents.</li>
+    <li>Notify the company immediately, before you leave the scene.</li>
+    <li>Never chase a vehicle that leaves. Get the plate and a description — chasing is dangerous and against company policy.</li>
+    <li>Be polite and factual with the police. Do not admit fault at the scene — just state what happened.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['accident']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['accident']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="accident"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-cargo">
+  <h2>11. Cargo, seals &amp; placards</h2>
+  <ul>
+    <li>Check the seal number against your paperwork at pickup. A broken or wrong seal is reported before you move.</li>
+    <li>Look for placards on the container. If placards are present, tell dispatch — hazmat rules may apply.</li>
+    <li>Report leaking, shifted, or damaged cargo immediately. Do not deliver and stay silent.</li>
+    <li>Take the load-out ticket photo at pickup — it is your proof of the container's condition.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['cargo']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['cargo']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="cargo"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
+</div>
+
+<div class="card" id="topic-mindset">
+  <h2>12. The professional mindset — it starts at home</h2>
+  <ul>
+    <li><b>Safety starts at home.</b> A peaceful home gives you a clear head, and a clear head keeps you safe. Settle the small things before you leave — do not carry an argument onto the road.</li>
+    <li>Your family is waiting for you. Finishing the day means coming home safe, not just finishing the load.</li>
+    <li>Rest is part of the job. Sleep is safety equipment.</li>
+    <li>Stay calm. Traffic, waiting, and port delays are part of this work — anger behind the wheel ends careers.</li>
+    <li>You are the face of S&amp;L Trucking. At the port and at the customer, how you act is who we are. Take pride in it.</li>
+    <li>Speak up early. If a job cannot be done safely or legally in your hours, say so — that is what a professional does.</li>
+    <li>Look out for each other. If you see a risk to another driver, tell them.</li>
+    <li>The company schedules work so you can get home every day. Your part is a clear head and professional driving.</li>
+  </ul>
+  <% if (!isAdmin) { %>
+    <% if (acks['mindset']) { %><p><span class="badge confirmed">✓ Completed — <%= fmtDate(acks['mindset']) %></span></p>
+    <% } else { %><form method="POST" action="/safety/ack"><input type="hidden" name="topic" value="mindset"><button type="submit">I have read and understand</button></form><% } %>
+  <% } %>
 </div>
 <%- include('partials/footer') %>
