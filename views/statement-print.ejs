@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver Statement — <%= r.driver.name %> — <%= weekStartISO %></title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color:#111; margin:24px; font-size:13px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  h2 { font-size:15px; margin:18px 0 6px; }
+  .sub { color:#444; margin:2px 0; }
+  table { border-collapse:collapse; width:100%; margin-top:8px; }
+  th, td { border:1px solid #bbb; padding:5px 7px; text-align:left; }
+  th { background:#f0f0f0; }
+  td.num, th.num { text-align:right; }
+  .summary { margin-top:16px; width:340px; }
+  .summary td { border:none; padding:3px 7px; }
+  .summary tr.total td { border-top:2px solid #111; font-size:16px; font-weight:700; }
+  .note { color:#555; font-size:12px; margin-top:14px; }
+  .toolbar { margin-bottom:16px; }
+  .toolbar button, .toolbar a { font-size:14px; padding:8px 14px; margin-right:8px; }
+  @media print {
+    .no-print { display:none; }
+    body { margin:0; }
+    @page { margin: 0.6in; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar no-print">
+  <button onclick="window.print()">Print / Save as PDF</button>
+  <a href="/settlement?week=<%= weekStartISO %>">Back to settlement</a>
+</div>
+
+<h1>S&amp;L Trucking LLC — Driver Statement</h1>
+<p class="sub"><b><%= r.driver.name %></b> (#<%= r.driver.truck_number || '' %>)</p>
+<p class="sub">Week: <b><%= weekStartISO %> ~ <%= weekEndISO %></b> (Sunday ~ Saturday)</p>
+<p class="sub">Status: <%= r.saved ? (r.saved.status === 'closed' ? 'Closed' : 'Open') : 'Not closed' %> · Generated <%= generatedOn %></p>
+
+<h2>Loads (confirmed only)</h2>
+<% if (!r.loads.length) { %>
+<p>No confirmed loads this week.</p>
+<% } else { %>
+<table>
+  <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
+  <% r.loads.forEach(function(l){ %>
+  <tr>
+    <td><%= fmtDate(l.load_date) %></td>
+    <td><%= l.container_no || '' %></td>
+    <td><%= l.delivery || '' %></td>
+    <td class="num"><%= money(l.rate) %></td>
+    <td class="num"><%= money(l.prepull) %></td>
+    <td class="num"><%= money(l.reefer) %></td>
+    <td class="num"><%= money(l.detention) %><% if (l.detention_status === 'pending') { %><br><small>pending (not counted)</small><% } else if (l.detention_status === 'rejected') { %><br><small>rejected (not counted)</small><% } %></td>
+    <td class="num"><%= money(l.overweight) %></td>
+    <td class="num"><%= money(l.fsc) %></td>
+    <td class="num"><b><%= money(loadTotal(l)) %></b></td>
+  </tr>
+  <% }) %>
+  <tr>
+    <td colspan="3"><b>Total</b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.rate); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.prepull); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.reefer); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + ((l.detention_status === 'pending' || l.detention_status === 'rejected') ? 0 : Number(l.detention)); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.overweight); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.fsc); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.revenue) %></b></td>
+  </tr>
+</table>
+<% } %>
+
+<table class="summary">
+  <tr><td>Revenue</td><td class="num"><%= money(r.revenue) %></td></tr>
+  <tr><td>Fuel (<%= r.gallons %> gal)</td><td class="num">− <%= money(r.fuelCost) %></td></tr>
+  <tr><td>Insurance ($100 × <%= r.daysWorked %> days)</td><td class="num">− <%= money(r.insurance) %></td></tr>
+  <tr><td>Net</td><td class="num"><%= money(r.net) %></td></tr>
+  <tr><td>Your split</td><td class="num"><%= r.splitPct %>%</td></tr>
+  <% if (r.weekendApplied) { %><tr><td>Weekend rule</td><td class="num">70% applied (weekend net <%= money(r.weekend.weekendNet) %>)</td></tr><% } %>
+  <tr class="total"><td>Driver pay</td><td class="num"><%= money(r.driverPay) %></td></tr>
+</table>
+
+<% if (r.fuelStd) { %>
+<p class="note">Fuel standard for your lanes: <%= r.fuelStd.stdGallons %> gal. You used <%= r.fuelStd.excessGal >= 0 ? r.fuelStd.excessGal + ' gal over' : Math.abs(r.fuelStd.excessGal) + ' gal under' %> the standard<% if (r.fuelStd.excessGal >= 0) { %> (<%= money(r.fuelStd.excessCost) %>; your share <%= money(r.fuelStd.driverShare) %>)<% } else { %> (saved <%= money(-r.fuelStd.excessCost) %>)<% } %>. Miles: <%= r.miles %> · MPG: <%= r.mpg === null ? '—' : r.mpg %><% if (r.mpg2w !== null && r.mpg2w !== undefined) { %> · 2-week avg MPG: <%= r.mpg2w %><% } %>.</p>
+<% } %>
+<p class="note">This statement covers confirmed loads only. Settlements are paid 1 week in arrears. Questions: contact the owner.</p>
+</body>
+</html>

@@ -91,7 +91,7 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
 <div class="card">
   <h2>Statement detail (confirmed loads only)</h2>
   <% rows.forEach(function(r){ %>
-    <h3><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)</h3>
+    <h3><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>) <a class="btn small secondary" href="/settlement/statement?week=<%= weekStartISO %>&driver_id=<%= r.driver.id %>" target="_blank">Print / PDF statement</a> <a class="btn small secondary" href="/settlement/monthly?month=<%= weekStartISO.slice(0, 7) %>&driver_id=<%= r.driver.id %>" target="_blank">Monthly summary</a></h3>
     <% if (!r.loads.length) { %><p class="notice">No confirmed loads this week.</p><% } else { %>
     <div class="table-wrap"><table>
       <tr><th>Date</th><th>Container</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>

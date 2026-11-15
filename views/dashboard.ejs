@@ -1,5 +1,5 @@
 <%- include('partials/header', { title: 'Dashboard' }) %>
-<h1>Dashboard</h1>
+<% if (isAdmin) { %><h1>Dashboard</h1><% } %>
 
 <% if (isAdmin) { %>
   <div class="card">
@@ -89,12 +89,8 @@
   <div class="card">
     <h2><%= driver.name %> (#<%= driver.truck_number || '' %>) — Today (<%= today %>)</h2>
 
-    <% if (pendingCount > 0) { %><p><span class="badge warn"><%= pendingCount %> pending</span> <span class="notice">Some loads are waiting for admin review.</span></p><% } %>
-    <% if (expiringCount > 0) { %><p><span class="badge warn"><%= expiringCount %> documents expiring soon</span> <span class="notice"><a href="/documents">Check documents</a></span></p><% } %>
-
     <% if (!todayLoads.length) { %>
-      <p class="notice">No loads yet today.</p>
-      <p><a class="btn" href="/loads">Add from dispatch or ticket photo</a></p>
+      <p class="notice">No loads yet today. Tap <b>Loads</b> in the menu below to add one.</p>
     <% } else { %>
       <% todayLoads.forEach(function(l){ %>
       <div class="load-card">
@@ -106,20 +102,35 @@
         <% if (l.appointment) { %><div class="lc-meta">Appointment: <%= fmtDate(l.appointment) %> <%= new Date(l.appointment).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %></div><% } %>
         <% if (l.bol_ref) { %><div class="lc-meta">BOL / Ref: <%= l.bol_ref %></div><% } %>
         <% if (l.notes) { %><div class="lc-meta"><%= l.notes %></div><% } %>
-        <% if (l.progress !== 'returned') { %>
-        <form method="POST" action="/loads/<%= l.id %>/progress" enctype="multipart/form-data" style="margin-top:8px">
-          <div><label><%= l.progress === 'scheduled' ? 'Load-out ticket photo (optional)' : (l.progress === 'picked' ? 'POD photo (optional)' : 'Empty-in ticket photo (optional)') %></label>
-          <input type="file" name="evidence" accept="image/*"></div>
-          <button type="submit" style="margin-top:6px">Next step: <%= l.progress === 'scheduled' ? 'Picked up' : (l.progress === 'picked' ? 'Delivered' : 'Returned') %></button>
-        </form>
-        <% } else { %>
+        <% if (l.progress === 'returned') { %>
         <div class="lc-meta" style="margin-top:8px">✅ Done</div>
+        <% } else { %>
+        <div class="lc-meta" style="margin-top:8px">Next: <%= ({ scheduled: 'Load-out ticket', picked: 'POD photo', delivered: 'Empty-in ticket' })[l.progress] || '' %> — <a href="/loads">open in Loads</a></div>
         <% } %>
       </div>
       <% }) %>
     <% } %>
 
-    <p class="notice">Fuel today: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
+    <p class="notice">Fuel today: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %> · This week: <%= weekLoadCount %> loads · Fuel <%= weekFuel.gallons %> gal · <%= money(weekFuel.cost) %></p>
+  </div>
+
+  <div class="card">
+    <h2>Needs attention</h2>
+    <% var attnAny = false; %>
+    <% if (safetyDone < safetyTotal) { attnAny = true; %><p>🛡️ <a href="/safety">Safety training</a> — <%= safetyDone %> of <%= safetyTotal %> done. Please finish the rest.</p><% } %>
+    <% if (typeof evidenceMissing !== 'undefined' && evidenceMissing.length) { attnAny = true; %>
+    <p style="margin-bottom:4px">📦 Evidence missing — upload the tickets so settlement and billing are not held up:</p>
+    <ul class="check-list">
+      <% evidenceMissing.forEach(function(x){ %>
+      <li><%= fmtDate(x.load.load_date) %> · <%= x.load.delivery || '' %> (<%= x.load.container_no || 'no container #' %>) — Missing: <b><%= x.missing.map(function(s){ return stageLabels[s]; }).join(', ') %></b> <a class="btn small" href="/loads">Upload</a></li>
+      <% }) %>
+    </ul>
+    <% } %>
+    <% expiringDocs.forEach(function(doc){ attnAny = true; var dLeft = Math.round((new Date(fmtDate(doc.expires_on)) - new Date(today)) / 86400000); %>
+    <p>📁 <a href="/documents"><%= doc.original_name %></a> — expires <%= fmtDate(doc.expires_on) %> (<%= dLeft < 0 ? 'already expired' : (dLeft === 0 ? 'today' : 'in ' + dLeft + ' days') %>)</p>
+    <% }) %>
+    <% if (pendingCount > 0) { attnAny = true; %><p>🕐 <%= pendingCount %> load<%= pendingCount > 1 ? 's' : '' %> waiting for owner review.</p><% } %>
+    <% if (!attnAny) { %><p>✅ All caught up — nothing needs your attention.</p><% } %>
   </div>
 
   <div class="card">
@@ -161,22 +172,6 @@
         <span class="mt-sub">Rates · Benefits · Rules</span>
       </a>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>My evidence</h2>
-    <% if (typeof evidenceMissing === 'undefined' || !evidenceMissing.length) { %>
-      <p>✅ All recent evidence is in — nothing missing.</p>
-    <% } else { %>
-      <p class="notice">The loads below are missing evidence. Upload the tickets so settlement and billing are not held up.</p>
-      <ul class="check-list">
-        <% evidenceMissing.forEach(function(x){ %>
-        <li><%= fmtDate(x.load.load_date) %> · <%= x.load.delivery || '' %> (<%= x.load.container_no || 'no container #' %>) —
-          Missing: <b><%= x.missing.map(function(s){ return stageLabels[s]; }).join(', ') %></b>
-          <a class="btn small" href="/loads">Upload</a></li>
-        <% }) %>
-      </ul>
-    <% } %>
   </div>
 
   <div class="grid">

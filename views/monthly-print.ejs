@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monthly Summary — <%= driver.name %> — <%= monthLabel %></title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color:#111; margin:24px; font-size:13px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:#444; margin:2px 0; }
+  table { border-collapse:collapse; width:100%; margin-top:10px; }
+  th, td { border:1px solid #bbb; padding:5px 7px; text-align:left; }
+  th { background:#f0f0f0; }
+  td.num, th.num { text-align:right; }
+  tr.total td { font-weight:700; background:#f7f7f7; }
+  .note { color:#555; font-size:12px; margin-top:14px; }
+  .toolbar { margin-bottom:16px; }
+  .toolbar button, .toolbar a { font-size:14px; padding:8px 14px; margin-right:8px; }
+  @media print {
+    .no-print { display:none; }
+    body { margin:0; }
+    @page { margin: 0.6in; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar no-print">
+  <button onclick="window.print()">Print / Save as PDF</button>
+  <a href="/settlement">Back to settlement</a>
+</div>
+
+<h1>S&amp;L Trucking LLC — Monthly Summary</h1>
+<p class="sub"><b><%= driver.name %></b> (#<%= driver.truck_number || '' %>)</p>
+<p class="sub">Month: <b><%= monthLabel %></b> · Generated <%= generatedOn %></p>
+
+<table>
+  <tr><th>Week (Sun ~ Sat)</th><th class="num">Loads</th><th class="num">Days</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th></tr>
+  <% weeks.forEach(function(w){ %>
+  <tr>
+    <td><%= w.weekStartISO %> ~ <%= w.weekEndISO %></td>
+    <td class="num"><%= w.r.loads.length %></td>
+    <td class="num"><%= w.r.daysWorked %></td>
+    <td class="num"><%= money(w.r.revenue) %></td>
+    <td class="num"><%= money(w.r.fuelCost) %></td>
+    <td class="num"><%= money(w.r.insurance) %></td>
+    <td class="num"><%= money(w.r.net) %></td>
+    <td class="num"><b><%= money(w.r.driverPay) %></b></td>
+  </tr>
+  <% }) %>
+  <tr class="total">
+    <td>Month total</td>
+    <td class="num"><%= totals.loads %></td>
+    <td class="num"><%= totals.daysWorked %></td>
+    <td class="num"><%= money(totals.revenue) %></td>
+    <td class="num"><%= money(totals.fuelCost) %></td>
+    <td class="num"><%= money(totals.insurance) %></td>
+    <td class="num"><%= money(totals.net) %></td>
+    <td class="num"><%= money(totals.driverPay) %></td>
+  </tr>
+</table>
+
+<p class="note">Miles: <%= totals.miles %> · Fuel: <%= totals.gallons %> gal. This summary adds up the weekly settlement weeks (Sunday ~ Saturday) that overlap this month. The weekly statements are the pay documents; this page is a monthly record of the same figures.</p>
+</body>
+</html>
