@@ -1,25 +1,9 @@
-<%- include('partials/header', { title: 'DVIR' }) %>
-<h1>DVIR &amp; Mechanic Logs</h1>
+<%- include('partials/header', { title: 'Maintenance' }) %>
+<h1>Maintenance &amp; Inspections</h1>
 
 <div class="card">
-  <h2>DVIR — Daily Vehicle Inspection</h2>
-  <form method="POST" action="/dvir/dvir">
-    <div class="form-row">
-      <% if (isAdmin) { %>
-      <div><label>Driver</label><select name="driver_id" required>
-        <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %></option><% }) %>
-      </select></div>
-      <% } else { %>
-      <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
-      <% } %>
-      <div><label>Date</label><input type="date" name="inspection_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
-      <div><label>Truck #</label><input name="truck_number" placeholder="100"></div>
-    </div>
-    <label>Defects (leave blank if none)</label>
-    <textarea name="defects" rows="2"></textarea>
-    <label style="display:inline"><input type="checkbox" name="safe_to_operate" checked> Safe to operate</label>
-    <div style="margin-top:12px"><button type="submit">Save DVIR</button></div>
-  </form>
+  <h2>Vehicle inspections (DVIR)</h2>
+  <p class="notice">Inspections are done in the ZigZag ELD app before driving. The table below keeps the portal inspection records from before the switch.</p>
 
   <div class="table-wrap" style="margin-top:12px"><table>
     <tr><th>Date</th><th>Driver</th><th>Truck</th><th>Defects</th><th>Safe to operate</th><th></th></tr>
@@ -45,7 +29,7 @@
     <div class="form-row">
       <div><label>Truck #</label><input name="truck_number" required placeholder="100"></div>
       <div><label>Date</label><input type="date" name="log_date" required value="<%= new Date().toISOString().slice(0,10) %>"></div>
-      <div><label>Mechanic</label><input name="mechanic" placeholder="George"></div>
+      <div><label>Mechanic</label><input name="mechanic" placeholder="Dave"></div>
       <div><label>Cost ($)</label><input name="cost" type="number" step="0.01" value="0"></div>
     </div>
     <label>Work done</label>
