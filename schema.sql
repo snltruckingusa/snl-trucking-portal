@@ -265,3 +265,7 @@ UPDATE loads SET dispatch_ok = TRUE, tickets_ok = TRUE WHERE status = 'confirmed
 -- container numbers.
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS empty_pin TEXT;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS load_pin TEXT;
+-- Job types (Eric, 2026-11-14): every job is a pair of gate moves.
+-- standard = Empty in + Load out (default); in_out_empty = Load in +
+-- Empty out; in_out_load = Load in + Load out.
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS job_type TEXT NOT NULL DEFAULT 'standard';
