@@ -269,3 +269,26 @@ ALTER TABLE loads ADD COLUMN IF NOT EXISTS load_pin TEXT;
 -- standard = Empty in + Load out (default); in_out_empty = Load in +
 -- Empty out; in_out_load = Load in + Load out.
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS job_type TEXT NOT NULL DEFAULT 'standard';
+
+-- Prepull work (Eric, 2026-11-14): a driver who does ANOTHER driver's
+-- leg (returns their empty +$60 / pulls their load out +$75) submits
+-- it here WITH the terminal ticket photo — no ticket, no credit. The
+-- owner approves; the credit joins the worker's week income (split
+-- like everything else) and the matching deduction lands on the
+-- owner's load. Exceptions are handled off-system (Zelle), by design.
+CREATE TABLE IF NOT EXISTS prepulls (
+  id SERIAL PRIMARY KEY,
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  work_date DATE NOT NULL,
+  kind TEXT NOT NULL,
+  container_no TEXT NOT NULL,
+  amount NUMERIC(10,2) NOT NULL,
+  load_id INTEGER REFERENCES loads(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  photo_data BYTEA,
+  photo_mime TEXT,
+  ocr_text TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at TIMESTAMPTZ
+);
