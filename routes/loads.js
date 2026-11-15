@@ -301,7 +301,7 @@ router.post('/', requireLogin, async (req, res) => {
      appointment && !isNaN(appointment) ? appointment : null,
      rate, num(req.body.prepull), num(req.body.reefer), detentionAmt, detentionStatus,
      num(req.body.overweight), fsc,
-     miles, req.body.status === 'confirmed' ? 'confirmed' : 'pending',
+     miles, !scope && req.body.status === 'confirmed' ? 'confirmed' : 'pending',
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null]
   );
   res.redirect('/loads');
@@ -333,6 +333,11 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   // pending for the owner's re-review. The owner editing keeps the
   // submitted status (his edit is the review) but is still logged.
   let status = newVals.status;
+  if (scope && !(old.status === 'confirmed' && !changed)) {
+    // A driver can never set or keep "confirmed" on his own load: new or
+    // changed entries wait for the owner's review.
+    status = 'pending';
+  }
   if (scope && old.status === 'confirmed' && changed) {
     status = 'pending';
     await query(
@@ -472,6 +477,7 @@ router.post('/:id/detention-reject', requireLogin, requireAdmin, async (req, res
 
 router.post('/:id/confirm', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);
+  if (scope) return res.status(403).send('Only the owner can confirm loads.');
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
   if (!existing.rows.length) return res.redirect('/loads');
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
@@ -496,6 +502,9 @@ router.post('/:id/delete', requireLogin, async (req, res) => {
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
   if (!existing.rows.length) return res.redirect('/loads');
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+  if (scope && existing.rows[0].status === 'confirmed') {
+    return res.status(403).send('This load is confirmed. Ask the owner to delete it.');
+  }
   if (existing.rows[0].ticket_photo) {
     const p = path.join(__dirname, '..', existing.rows[0].ticket_photo);
     fs.unlink(p, () => {});

@@ -6,13 +6,13 @@
 // their flat pay_split.
 const express = require('express');
 const { query } = require('../db');
-const { requireLogin, requireAdmin, num } = require('../lib/helpers');
+const { requireLogin, requireAdmin, num, toISODate } = require('../lib/helpers');
 const { effectiveSplitPct } = require('../lib/tenure');
 
 const router = express.Router();
 
 function withSplit(drivers) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISODate(new Date());
   return drivers.map(d => ({ ...d, current_split: effectiveSplitPct(d, today) }));
 }
 
