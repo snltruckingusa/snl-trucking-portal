@@ -1,17 +1,17 @@
 <%- include('partials/header', { title: 'Invoice' }) %>
-<h1>피어링크 인보이스 / PierLink Invoice</h1>
-<p class="notice">주: 일요일 ~ 토요일. 청구(Claim)는 기사 정산과 별개로 조정할 수 있습니다. 엠티 반납이 확인되지 않은 건은 보류되어 다음 인보이스의 "Previous unpaid"로 넘어갑니다. 금액을 기록하면(Paid) 해당 건의 잔액이 줄어듭니다.<br>
+<h1>PierLink Invoice</h1>
+<p class="notice">Week: Sunday ~ Saturday. Claims can be adjusted separately from driver settlement. Loads whose empty return is not confirmed are held and carried into the next invoice as "Previous unpaid." Recording a payment (Paid) reduces that line's balance.<br>
 Claims are independent of driver settlement. Unpaid balances carry into the next invoice. Recording a payment reduces that line's balance.</p>
 
 <div class="card">
   <form method="GET" action="/invoice" class="form-row" style="align-items:end">
-    <div><label>주 시작일 (일요일) / Week of (Sun)</label><input type="date" name="week" value="<%= weekISO %>"></div>
-    <div><button type="submit">조회 / View</button>
-      <a class="btn secondary" href="/invoice?week=<%= prevWeek %>">← 지난주</a>
-      <a class="btn secondary" href="/invoice?week=<%= nextWeek %>">다음주 →</a>
-      <button class="btn secondary" type="button" onclick="window.print()">인쇄 / Print</button></div>
+    <div><label>Week of (Sun)</label><input type="date" name="week" value="<%= weekISO %>"></div>
+    <div><button type="submit">View</button>
+      <a class="btn secondary" href="/invoice?week=<%= prevWeek %>">← Prev week</a>
+      <a class="btn secondary" href="/invoice?week=<%= nextWeek %>">Next week →</a>
+      <button class="btn secondary" type="button" onclick="window.print()">Print</button></div>
   </form>
-  <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b><% if (week.sent_at) { %> · <span class="badge good">발송됨 <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %></p>
+  <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b><% if (week.sent_at) { %> · <span class="badge good">Sent <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %></p>
 </div>
 
 <% blocks.forEach(function(b){ %>
@@ -19,11 +19,11 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
   <h2><%= b.driver.name %> <span class="notice">(#<%= b.driver.truck_number || '' %>)</span></h2>
   <p><b>Previous unpaid amount (Mty Return): <%= money(b.prevUnpaid) %></b></p>
   <div class="table-wrap"><table>
-    <tr><th>날짜</th><th>배송 / 반납</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detent</th><th class="num">O/W</th><th class="num">FSC</th><th class="num">청구</th><th class="num">Paid (이번 주)</th><th class="num">잔액</th><th class="no-print"></th></tr>
+    <tr><th>Date</th><th>Delivery / Return</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detent</th><th class="num">O/W</th><th class="num">FSC</th><th class="num">Claim</th><th class="num">Paid (this week)</th><th class="num">Balance</th><th class="no-print"></th></tr>
     <% b.prevLines.forEach(function(l){ %>
     <tr class="prev-line">
       <td><%= fmtDate(l.load_date || l.claim_week) %></td>
-      <td><%= l.description || l.load_delivery || '' %><br><span class="notice">전주 이월 · <%= l.container_no || '' %> · <%= l.returned ? '엠티 반납 완료' : '엠티 미반납' %></span></td>
+      <td><%= l.description || l.load_delivery || '' %><br><span class="notice">Carried over · <%= l.container_no || '' %> · <%= l.returned ? 'Empty returned' : 'Empty not returned' %></span></td>
       <td class="num"><%= money(l.rate) %></td><td class="num"><%= money(l.prepull) %></td><td class="num"><%= money(l.reefer) %></td><td class="num"><%= money(l.detention) %></td><td class="num"><%= money(l.overweight) %></td><td class="num"><%= money(l.fsc) %></td>
       <td class="num"><%= money(l.claim) %></td>
       <td class="num"><b><%= money(l.paidThis) %></b></td>
@@ -34,7 +34,7 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
     <% b.weekLines.forEach(function(l){ %>
     <tr>
       <td><%= fmtDate(l.load_date || l.claim_week) %></td>
-      <td><%= l.description || l.load_delivery || '' %><br><span class="notice"><%= l.container_no || '' %> · <%= l.returned ? '엠티 반납 완료' : '엠티 미반납' %></span></td>
+      <td><%= l.description || l.load_delivery || '' %><br><span class="notice"><%= l.container_no || '' %> · <%= l.returned ? 'Empty returned' : 'Empty not returned' %></span></td>
       <td class="num"><%= money(l.rate) %></td><td class="num"><%= money(l.prepull) %></td><td class="num"><%= money(l.reefer) %></td><td class="num"><%= money(l.detention) %></td><td class="num"><%= money(l.overweight) %></td><td class="num"><%= money(l.fsc) %></td>
       <td class="num"><%= money(l.claim) %></td>
       <td class="num"><b><%= money(l.paidThis) %></b></td>
@@ -42,16 +42,16 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
       <td class="no-print"><%- include('partials/invoice-line-actions', { l: l, weekISO: weekISO }) %></td>
     </tr>
     <% }) %>
-    <% if (!b.prevLines.length && !b.weekLines.length) { %><tr><td colspan="12" class="notice">청구 건이 없습니다.</td></tr><% } %>
+    <% if (!b.prevLines.length && !b.weekLines.length) { %><tr><td colspan="12" class="notice">No claims.</td></tr><% } %>
   </table></div>
-  <p style="margin-top:8px">이번 주 Paid 합계: <b><%= money(b.paidWeek) %></b> · <b>Payment for Next week (Mty Not Return): <%= money(b.carryOut) %></b></p>
+  <p style="margin-top:8px">Paid this week: <b><%= money(b.paidWeek) %></b> · <b>Payment for Next week (Mty Not Return): <%= money(b.carryOut) %></b></p>
   <details class="no-print">
-    <summary class="btn small secondary">수동 청구 추가 / Add manual claim</summary>
+    <summary class="btn small secondary">Add manual claim</summary>
     <form method="POST" action="/invoice/lines" style="margin-top:8px">
       <input type="hidden" name="week" value="<%= weekISO %>">
       <input type="hidden" name="driver_id" value="<%= b.driver.id %>">
       <div class="form-row">
-        <div><label>설명 / Description</label><input name="description"></div>
+        <div><label>Description</label><input name="description"></div>
         <div><label>Rate</label><input name="rate" type="number" step="0.01" value="0"></div>
         <div><label>Prepull</label><input name="prepull" type="number" step="0.01" value="0"></div>
         <div><label>Reefer</label><input name="reefer" type="number" step="0.01" value="0"></div>
@@ -59,36 +59,36 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
         <div><label>O/W</label><input name="overweight" type="number" step="0.01" value="0"></div>
         <div><label>FSC</label><input name="fsc" type="number" step="0.01" value="0"></div>
       </div>
-      <div style="margin-top:8px"><button class="btn small" type="submit">추가 / Add</button></div>
+      <div style="margin-top:8px"><button class="btn small" type="submit">Add</button></div>
     </form>
   </details>
 </div>
 <% }) %>
 
 <div class="card">
-  <h2>합계 / Totals</h2>
+  <h2>Totals</h2>
   <div class="table-wrap"><table>
-    <tr><td>Total (이번 인보이스 Paid)</td><td class="num"><b><%= money(totalPaidWeek) %></b></td></tr>
-    <tr><td>Help Ins (배송 <%= deliveredCount %>건 × $15<% if (week.help_ins_override !== null && week.help_ins_override !== undefined) { %> · 수동 지정<% } %>)</td><td class="num"><%= money(helpIns) %></td></tr>
-    <tr><td>Deduct (선수금 상환)</td><td class="num">− <%= money(deduct) %></td></tr>
-    <tr><td>받을 금액 / Expected</td><td class="num"><b><%= money(expected) %></b></td></tr>
-    <tr><td>Receive (실제 입금)</td><td class="num"><%= money(received) %></td></tr>
-    <tr><td><b>Balance (미수금)</b></td><td class="num"><b><%= money(balance) %></b></td></tr>
+    <tr><td>Total (Paid on this invoice)</td><td class="num"><b><%= money(totalPaidWeek) %></b></td></tr>
+    <tr><td>Help Ins (<%= deliveredCount %> deliveries × $15<% if (week.help_ins_override !== null && week.help_ins_override !== undefined) { %> · manual override<% } %>)</td><td class="num"><%= money(helpIns) %></td></tr>
+    <tr><td>Deduct (advance repayment)</td><td class="num">− <%= money(deduct) %></td></tr>
+    <tr><td>Expected</td><td class="num"><b><%= money(expected) %></b></td></tr>
+    <tr><td>Receive (actual deposit)</td><td class="num"><%= money(received) %></td></tr>
+    <tr><td><b>Balance (receivable)</b></td><td class="num"><b><%= money(balance) %></b></td></tr>
   </table></div>
 
   <form method="POST" action="/invoice/week" class="no-print" style="margin-top:12px">
     <input type="hidden" name="week" value="<%= weekISO %>">
     <div class="form-row">
-      <div><label>Help Ins 수동 지정 (비우면 자동 $<%= helpInsAuto %>)</label><input name="help_ins_override" type="number" step="0.01" value="<%= week.help_ins_override !== null && week.help_ins_override !== undefined ? week.help_ins_override : '' %>"></div>
-      <div><label>선수금 잔액 (이 인보이스 전)</label><input name="advance_before" type="number" step="0.01" value="<%= week.advance_before !== null && week.advance_before !== undefined ? week.advance_before : '' %>" placeholder="미설정"></div>
-      <div><label>이번 주 공제 (Deduct)</label><input name="advance_deduct" type="number" step="0.01" value="<%= week.advance_deduct %>"></div>
-      <div><label>Receive (실제 입금)</label><input name="received" type="number" step="0.01" value="<%= week.received %>"></div>
-      <div><label style="display:inline"><input type="checkbox" name="mark_sent" <%= week.sent_at ? 'checked' : '' %>> 발송 표시 / Mark sent</label></div>
+      <div><label>Help Ins override (leave blank for auto $<%= helpInsAuto %>)</label><input name="help_ins_override" type="number" step="0.01" value="<%= week.help_ins_override !== null && week.help_ins_override !== undefined ? week.help_ins_override : '' %>"></div>
+      <div><label>Advance balance (before this invoice)</label><input name="advance_before" type="number" step="0.01" value="<%= week.advance_before !== null && week.advance_before !== undefined ? week.advance_before : '' %>" placeholder="Not set"></div>
+      <div><label>Deduct this week</label><input name="advance_deduct" type="number" step="0.01" value="<%= week.advance_deduct %>"></div>
+      <div><label>Receive (actual deposit)</label><input name="received" type="number" step="0.01" value="<%= week.received %>"></div>
+      <div><label style="display:inline"><input type="checkbox" name="mark_sent" <%= week.sent_at ? 'checked' : '' %>> Mark sent</label></div>
     </div>
-    <div style="margin-top:8px"><button class="btn small" type="submit">저장 / Save</button></div>
+    <div style="margin-top:8px"><button class="btn small" type="submit">Save</button></div>
   </form>
   <% if (week.advance_before !== null && week.advance_before !== undefined) { %>
-  <p class="notice">선수금: 이 인보이스 전 잔액 <%= money(week.advance_before) %> → 공제 후 <%= money(Math.max(0, Number(week.advance_before) - Number(week.advance_deduct))) %> 남음.</p>
+  <p class="notice">Advance: balance before this invoice <%= money(week.advance_before) %> → <%= money(Math.max(0, Number(week.advance_before) - Number(week.advance_deduct))) %> left after the deduction.</p>
   <% } %>
 </div>
 <%- include('partials/footer') %>

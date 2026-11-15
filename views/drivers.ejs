@@ -1,25 +1,25 @@
 <%- include('partials/header', { title: 'Drivers' }) %>
-<h1>기사 명단 / Drivers</h1>
+<h1>Drivers</h1>
 <% if (error) { %><div class="alert error"><%= error %></div><% } %>
 
 <div class="card">
-  <h2>기사 추가 / Add driver</h2>
+  <h2>Add driver</h2>
   <form method="POST" action="/drivers">
     <div class="form-row">
-      <div><label>이름 / Name</label><input name="name" required></div>
-      <div><label>트럭 번호 / Truck #</label><input name="truck_number" placeholder="100"></div>
-      <div><label>정산 비율 % / Pay split %</label><input name="pay_split" type="number" step="0.01" value="50"></div>
-      <div><label>입사일 / Hire date</label><input name="hire_date" type="date"></div>
-      <div><label style="display:inline"><input type="checkbox" name="ladder_exempt"> 근속 단계 예외 (처음부터 고정 비율) / Ladder exempt</label></div>
+      <div><label>Name</label><input name="name" required></div>
+      <div><label>Truck #</label><input name="truck_number" placeholder="100"></div>
+      <div><label>Pay split %</label><input name="pay_split" type="number" step="0.01" value="50"></div>
+      <div><label>Hire date</label><input name="hire_date" type="date"></div>
+      <div><label style="display:inline"><input type="checkbox" name="ladder_exempt"> Ladder exempt (fixed split from day one)</label></div>
     </div>
-    <div style="margin-top:12px"><button type="submit">추가 / Add</button></div>
+    <div style="margin-top:12px"><button type="submit">Add</button></div>
   </form>
-  <p class="notice">근속 단계: 입사 후 첫 3개월 45% → 50% → 1년 후 55% (입사일이 입력된 기사에게 자동 적용). 예외 체크 시 입력한 비율로 고정됩니다. Tenure ladder applies automatically when a hire date is set.</p>
+  <p class="notice">Tenure ladder: first 3 months after hire 45% → 50% → 55% after 1 year (applied automatically when a hire date is set). If the exempt box is checked, the split stays at the entered rate.</p>
 </div>
 
 <div class="card">
   <div class="table-wrap"><table>
-    <tr><th>이름</th><th>트럭</th><th>정산 % (설정/현재 적용)</th><th>입사일 / 예외</th><th>상태</th><th>수정</th><th></th></tr>
+    <tr><th>Name</th><th>Truck</th><th>Pay split % (set / current)</th><th>Hire date / Exempt</th><th>Status</th><th>Edit</th><th></th></tr>
     <% drivers.forEach(function(d){ %>
     <tr>
       <form method="POST" action="/drivers/<%= d.id %>/edit">
@@ -27,18 +27,18 @@
         <td><input name="truck_number" value="<%= d.truck_number || '' %>"></td>
         <td><input name="pay_split" type="number" step="0.01" value="<%= d.pay_split %>" style="width:70px"> / <b><%= d.current_split %>%</b></td>
         <td><input name="hire_date" type="date" value="<%= d.hire_date ? fmtDate(d.hire_date) : '' %>">
-          <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> 예외</label></td>
-        <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> 활동중</label></td>
-        <td><button class="btn small" type="submit">저장 / Save</button></td>
+          <label style="display:inline"><input type="checkbox" name="ladder_exempt" <%= d.ladder_exempt ? 'checked' : '' %>> Exempt</label></td>
+        <td><label style="display:inline"><input type="checkbox" name="active" <%= d.active ? 'checked' : '' %>> Active</label></td>
+        <td><button class="btn small" type="submit">Save</button></td>
       </form>
       <td>
-        <form class="inline" method="POST" action="/drivers/<%= d.id %>/delete" onsubmit="return confirm('정말 삭제할까요? 운행/연료/정산 기록이 있으면 삭제할 수 없습니다.')">
-          <button class="btn small danger" type="submit">삭제 / Delete</button>
+        <form class="inline" method="POST" action="/drivers/<%= d.id %>/delete" onsubmit="return confirm('Really delete? A driver with load, fuel, or settlement records cannot be deleted.')">
+          <button class="btn small danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
     <% }) %>
   </table></div>
-  <p class="notice">기사 삭제는 운행·연료·정산 기록이 없을 때만 가능합니다. 기록이 있는 기사는 비활성화하세요.</p>
+  <p class="notice">A driver can only be deleted if they have no load, fuel, or settlement records. Deactivate drivers who have records.</p>
 </div>
 <%- include('partials/footer') %>
