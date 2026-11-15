@@ -83,7 +83,7 @@
     <div class="table-wrap"><table>
       <tr><th>Name</th><th>Truck</th><th>Phone</th><th>Pay split</th><th>Status</th></tr>
       <% drivers.forEach(function(d){ %>
-      <% var veh = (typeof vehicleMap !== 'undefined' && vehicleMap) ? vehicleMap[String(d.truck_number || '').replace(/^#/, '')] : null; %>
+      <% var veh = (typeof vehicleMap !== 'undefined' && vehicleMap) ? vehicleMap[String(d.truck_number || '').replace(/#/g, '').trim()] : null; %>
       <tr><td><%= d.name %></td><td>#<%= d.truck_number || '' %><% if (veh && veh.vin) { %> <span class="notice">(…<%= String(veh.vin).slice(-6) %>)</span><% } %></td><td><%= d.phone || '—' %></td><td class="num"><%= d.pay_split %>%</td><td><%= d.active ? 'Active' : 'Inactive' %></td></tr>
       <% }) %>
     </table></div>
