@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,37 +12,37 @@
   <% if (user) { %>
   <div class="who">
     <%= user.username %>
-    <% if (user.role === 'admin') { %>(관리자 / Admin)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
-    · <a class="who-link" href="/change-password">비밀번호 / Password</a>
-    · <a class="who-link" href="/logout">로그아웃 / Logout</a>
+    <% if (user.role === 'admin') { %>(Admin)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
+    · <a class="who-link" href="/change-password">Password</a>
+    · <a class="who-link" href="/logout">Logout</a>
   </div>
   <% if (user.role === 'admin') { %>
   <nav class="nav">
-    <a href="/">대시보드 / Dashboard</a>
-    <a href="/loads">운행 / Loads</a>
-    <a href="/fuel">연료 / Fuel</a>
-    <a href="/settlement">정산 / Settlement</a>
-    <a href="/invoice">인보이스 / Invoice</a>
-    <a href="/documents">서류 / Documents</a>
-    <a href="/drivers">기사 / Drivers</a>
-    <a href="/receipts">입금 / Receipts</a>
-    <a href="/users">계정 / Users</a>
+    <a href="/">Dashboard</a>
+    <a href="/loads">Loads</a>
+    <a href="/fuel">Fuel</a>
+    <a href="/settlement">Settlement</a>
+    <a href="/invoice">Invoice</a>
+    <a href="/documents">Documents</a>
+    <a href="/drivers">Drivers</a>
+    <a href="/receipts">Receipts</a>
+    <a href="/users">Users</a>
   </nav>
   <nav class="nav nav-secondary">
-    <span class="nav-group-label">더보기 / More:</span>
-    <a href="/safety">안전교육 / Safety</a>
-    <a href="/instructions">규정 / Rules</a>
-    <a href="/benefits">복리후생 / Benefits</a>
-    <a href="/settlement/mpg">연비 / MPG</a>
-    <a href="/dvir">점검 / DVIR</a>
+    <span class="nav-group-label">More:</span>
+    <a href="/safety">Safety</a>
+    <a href="/instructions">Rules</a>
+    <a href="/benefits">Benefits</a>
+    <a href="/settlement/mpg">MPG</a>
+    <a href="/dvir">DVIR</a>
   </nav>
   <% } else { %>
   <nav class="tabbar">
-    <a href="/">홈<br><span>Home</span></a>
-    <a href="/loads">화물<br><span>Loads</span></a>
-    <a href="/settlement">정산<br><span>Pay</span></a>
-    <a href="/documents">서류<br><span>Docs</span></a>
-    <a href="/more">더보기<br><span>More</span></a>
+    <a href="/">Home</a>
+    <a href="/loads">Loads</a>
+    <a href="/settlement">Pay</a>
+    <a href="/documents">Docs</a>
+    <a href="/more">More</a>
   </nav>
   <% } %>
   <% } %>
