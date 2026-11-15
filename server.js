@@ -87,6 +87,8 @@ app.use('/documents', require('./routes/documents'));
 app.use('/dvir', require('./routes/dvir'));
 app.use('/mytruck', require('./routes/mytruck'));
 app.use('/mechanic', require('./routes/mechanic'));
+app.use('/audit', require('./routes/audit'));
+app.use('/issued', require('./routes/issued'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
