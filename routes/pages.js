@@ -182,6 +182,10 @@ router.get('/instructions', requireLogin, (req, res) => {
   res.render('instructions', { isAdmin: isAdmin(req) });
 });
 
+router.get('/rates', requireLogin, (req, res) => {
+  res.render('rates', { isAdmin: isAdmin(req) });
+});
+
 router.get('/benefits', requireLogin, (req, res) => {
   res.render('benefits', { isAdmin: isAdmin(req) });
 });
