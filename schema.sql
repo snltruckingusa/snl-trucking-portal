@@ -359,3 +359,10 @@ ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 
 ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS entered_by TEXT;
 ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS driver_id INTEGER REFERENCES drivers(id);
 ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+-- Mechanic entry (2026-11-14, Eric): one shared shop login. Any shop
+-- that repairs a truck can enter the record; the account sees only
+-- the repair-entry page. The shop name is required on every entry —
+-- that, not the login, is the accountability.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','driver','mechanic'));
