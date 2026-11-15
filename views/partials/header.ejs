@@ -7,6 +7,38 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="<%= user && user.role !== 'admin' ? 'has-tabbar' : '' %>">
+<%
+  // ---- Frame navigation: top bar = main sections, left sidebar = the
+  // current section's sub-menus. Computed from the request path so no
+  // route has to change. (Frame redesign, Nov 15, 2026.)
+  var p = (typeof path !== 'undefined' && path) ? path : '/';
+  var sec = 'home', subs = [], top = [];
+  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck' };
+  if (user && user.role === 'admin') {
+    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/dvir', 'Maintenance'], ['/more', 'More'] ];
+    if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
+    else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
+    else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
+    else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
+    else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
+    else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
+    else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
+  } else if (user && user.role === 'driver') {
+    top = [ ['/', 'Home'], ['/loads', 'Loads'], ['/settlement', 'Pay'], ['/documents', 'My File'], ['/mytruck', 'My Truck'], ['/more', 'More'] ];
+    if (p === '/') { sec = 'home'; subs = [ ['/', 'Home'], ['/safety', 'Safety Training'] ]; }
+    else if (p.startsWith('/loads') || p.startsWith('/fuel')) { sec = 'loads'; subs = [ ['/loads', 'My Loads'], ['/fuel', 'Fuel'] ]; }
+    else if (p.startsWith('/settlement')) { sec = 'pay'; subs = [ ['/settlement', 'Settlement'] ]; }
+    else if (p.startsWith('/documents')) { sec = 'myfile'; subs = [ ['/documents', 'My File'] ]; }
+    else if (p.startsWith('/mytruck')) { sec = 'mytruck'; subs = [ ['/mytruck', 'My Truck'] ]; }
+    else { sec = 'more'; subs = [ ['/more', 'More'], ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
+  }
+  // Longest matching sidebar href is the active one.
+  var activeSub = '';
+  subs.forEach(function (s) {
+    if ((p === s[0] || (s[0].length > 1 && p.startsWith(s[0] + '/'))) && s[0].length > activeSub.length) activeSub = s[0];
+  });
+  var framed = !!(user && user.role !== 'mechanic' && top.length);
+%>
 <header class="topbar">
   <div class="brand">S&amp;L Trucking <span class="sub">snltruckingusa.com</span></div>
   <% if (user) { %>
@@ -16,33 +48,17 @@
     · <a class="who-link" href="/change-password">Password</a>
     · <a class="who-link" href="/logout">Logout</a>
   </div>
-  <% if (user.role === 'admin') { %>
-  <nav class="nav">
-    <a href="/">Dashboard</a>
-    <a href="/loads">Loads</a>
-    <a href="/fuel">Fuel</a>
-    <a href="/settlement">Settlement</a>
-    <a href="/invoice">Invoice</a>
-    <a href="/documents">My File</a>
-    <a href="/drivers">Drivers</a>
-    <a href="/receipts">Receipts</a>
-    <a href="/users">Users</a>
+  <% if (framed) { %>
+  <nav class="topnav">
+    <% top.forEach(function (t) { %><a href="<%= t[0] %>" class="<%= topHref[sec] === t[0] ? 'active' : '' %>"><%= t[1] %></a><% }); %>
   </nav>
-  <nav class="nav nav-secondary">
-    <span class="nav-group-label">More:</span>
-    <a href="/safety">Safety</a>
-    <a href="/instructions">Rules</a>
-    <a href="/rates">Rates</a>
-    <a href="/benefits">Benefits</a>
-    <a href="/settlement/mpg">MPG</a>
-    <a href="/dvir">Maintenance</a>
-    <a href="/mytruck">My Truck</a>
-  </nav>
+  <button class="drawer-btn" type="button" onclick="document.body.classList.toggle('drawer-open')">☰ Menu</button>
   <% } else if (user.role === 'mechanic') { %>
   <nav class="nav">
     <a href="/mechanic">Repair Entry</a>
   </nav>
-  <% } else { %>
+  <% } %>
+  <% if (user.role === 'driver') { %>
   <nav class="tabbar">
     <a href="/">Home</a>
     <a href="/loads">Loads</a>
@@ -53,4 +69,13 @@
   <% } %>
   <% } %>
 </header>
+<% if (framed) { %>
+<div class="shell">
+  <aside class="sidebar" onclick="document.body.classList.remove('drawer-open')">
+    <div class="side-title"><%= (top.filter(function (t) { return topHref[sec] === t[0]; })[0] || [])[1] || '' %></div>
+    <% subs.forEach(function (s) { %><a href="<%= s[0] %>" class="<%= activeSub === s[0] ? 'active' : '' %>"><%= s[1] %></a><% }); %>
+  </aside>
+  <main class="container">
+<% } else { %>
 <main class="container">
+<% } %>
