@@ -7,7 +7,7 @@
 //   net      = revenue - fuel - insurance
 //   driver pay = net x pay_split%   (default 50%)
 //   company net = net - driver pay
-//   MPG = miles / gallons (flag < 6.0 as "연비 개선 필요")
+//   MPG = miles / gallons (flag < 6.0 as "MPG needs improvement")
 // Friday close-out: close/reopen a week's settlement (snapshot stored in
 // settlements table). Week summary: confirmed revenue, driver pay, fuel,
 // company net, receipts, pending entries awaiting review.

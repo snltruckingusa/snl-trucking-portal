@@ -272,7 +272,7 @@ router.post('/', requireLogin, async (req, res) => {
   if (!driver_id) return res.redirect('/loads');
   // Correction policy: drivers cannot add entries into a closed week.
   if (scope && await weekClosed(driver_id, req.body.load_date)) {
-    return res.status(403).send('This week is already settled (closed). Ask the owner to add or correct entries. / 마감된 주입니다. 사장님께 문의하세요.');
+    return res.status(403).send('This week is already settled (closed). Ask the owner to add or correct entries.');
   }
   const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
   const delivery = (req.body.delivery || '').trim() || null;
@@ -315,7 +315,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   if (scope && old.driver_id !== scope) return res.status(403).send('Forbidden.');
   // Correction policy: after Friday close-out the week locks for drivers.
   if (scope && await weekClosed(old.driver_id, fmtDate(old.load_date))) {
-    return res.status(403).send('This week is already settled (closed). Corrections go through the owner. / 마감된 주입니다. 사장님께 문의하세요.');
+    return res.status(403).send('This week is already settled (closed). Corrections go through the owner.');
   }
   const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
   const newVals = {
@@ -362,7 +362,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
 });
 
 // Advance the execution progress by one step:
-// 예정(scheduled) → 픽업 완료(picked) → 배송 완료(delivered) → 반납 완료(returned).
+// scheduled → picked → delivered → returned.
 // A driver may only advance their own loads. The step's evidence photo
 // (LOAD OUT ticket / POD / EMPTY IN ticket) may be attached with the same
 // tap — it is stored durably in the database and OCR-parsed.

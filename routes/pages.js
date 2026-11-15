@@ -15,7 +15,7 @@ const router = express.Router();
 
 // Evidence expectations per progress step — the self-check that lets a
 // driver see his own record is complete (Eric, 2026-11-14).
-const STAGE_LABELS = { load_out: '로드아웃 티켓', pod: 'POD', empty_in: '엠티인 티켓' };
+const STAGE_LABELS = { load_out: 'Load-out ticket', pod: 'POD', empty_in: 'Empty-in ticket' };
 const EXPECTED_BY_PROGRESS = {
   scheduled: [],
   picked: ['load_out'],

@@ -13,12 +13,12 @@ const { requireLogin, scopedDriverId, isAdmin } = require('../lib/helpers');
 const router = express.Router();
 
 const CATEGORIES = {
-  mvr: 'MVR (운전 기록)',
-  medical_card: 'Medical Card (건강 카드)',
-  cdl: 'CDL (상용 운전면허)',
-  registration: 'Registration (차량 등록)',
-  contract: 'Contract (계약서)',
-  other: 'Other (기타)',
+  mvr: 'MVR',
+  medical_card: 'Medical Card',
+  cdl: 'CDL',
+  registration: 'Registration',
+  contract: 'Contract',
+  other: 'Other',
 };
 
 const upload = multer({
