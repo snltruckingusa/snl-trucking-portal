@@ -395,3 +395,13 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   read_at     TIMESTAMPTZ
 );
+
+-- Vehicle register: one row per truck (unit number is the key).
+-- VIN and plate live here — not on the driver — and are read by the
+-- dashboard roster and the audit page. (Eric, 2026-11-15.)
+CREATE TABLE IF NOT EXISTS vehicles (
+  truck_number TEXT PRIMARY KEY,
+  vin          TEXT,
+  plate        TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
