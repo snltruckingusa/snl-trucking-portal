@@ -374,3 +374,11 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS dob DATE;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_no TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_state TEXT;
+
+-- Vehicle documents gain the approval chain (2026-11-15): a driver can
+-- upload his own truck's registration / annual inspection; the upload
+-- waits as 'pending' until the owner confirms it. Existing rows and
+-- owner uploads are 'confirmed'. The roadside copy is always the
+-- newest CONFIRMED document.
+ALTER TABLE vehicle_docs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'confirmed';
+ALTER TABLE vehicle_docs ADD COLUMN IF NOT EXISTS uploaded_by TEXT;
