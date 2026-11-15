@@ -201,13 +201,17 @@ router.post('/vehicle-docs/upload', requireLogin, uploadMem.single('file'), asyn
 
 router.post('/vehicle', requireLogin, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).send('Forbidden.');
-  const truck = clean(req.body.truck_number).replace(/^#/, '');
+  const truckRaw = clean(req.body.truck_number);
+  const truck = truckRaw ? truckRaw.replace(/#/g, '').trim() : '';
   if (!truck) return res.redirect('/mytruck');
-  const vin = clean(req.body.vin).toUpperCase() || null;
-  const plate = clean(req.body.plate).toUpperCase() || null;
+  const vinRaw = clean(req.body.vin);
+  const vin = vinRaw ? vinRaw.toUpperCase() : null;
+  const plateRaw = clean(req.body.plate);
+  const plate = plateRaw ? plateRaw.toUpperCase() : null;
   try {
     const upd = await query(
-      'UPDATE vehicles SET vin = $2, plate = $3, updated_at = now() WHERE truck_number = $1',
+      `UPDATE vehicles SET truck_number = $1, vin = $2, plate = $3, updated_at = now()
+       WHERE REPLACE(truck_number, '#', '') = $1`,
       [truck, vin, plate]
     );
     if (!upd.rowCount) {
