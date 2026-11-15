@@ -67,6 +67,65 @@
     <div style="margin-top:12px"><button type="submit">Filter</button></div>
   </form>
 
+  <% if (!isAdmin) { %>
+  <style>
+    .step-card { border:1px solid #ddd; border-radius:12px; padding:12px 14px; margin-top:12px; background:#fff; }
+    .sc-head { margin-bottom:6px; }
+    .step { border-top:1px solid #eee; padding:9px 2px; }
+    .step summary { cursor:pointer; }
+    .step .step-ic { display:inline-block; min-width:24px; font-weight:700; }
+    .step.done .step-ic { color:#1a7f37; }
+    .step.current { background:#f2f6ff; border:1px solid #b9d2ff; border-radius:10px; padding:10px; margin-top:8px; }
+    .step.future { opacity:.72; }
+    .step-body { margin-top:8px; }
+  </style>
+  <% loads.forEach(function(l){ var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null;
+     var stages = [
+       { key:'load_out', n:2, title:'Load-out ticket', hint:'One photo of the load-out (gate out) ticket. The container number and weights are read from it automatically.' },
+       { key:'pod', n:3, title:'POD — delivery complete', hint:'One photo of the signed delivery order (POD).' },
+       { key:'empty_in', n:4, title:'Empty-in ticket', hint:'One photo of the empty-return ticket. This closes the job.' }
+     ];
+     var currentSet = false; %>
+  <div class="step-card">
+    <div class="sc-head"><b><%= fmtDate(l.load_date) %></b> · <%= l.container_no || '—' %> · <%= l.pickup || '?' %> → <%= l.delivery || '?' %>
+      <span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? 'Confirmed' : 'Pending' %></span>
+      <b class="num"><%= money(loadTotal(l)) %></b>
+      <% if (ev && ev.ow) { %><span class="badge flag">Ticket O/W over limit</span><% } %>
+      <% if (l.status === 'pending') { %><a class="btn small danger" href="/loads/<%= l.id %>/delete-form">Delete</a><% } %>
+    </div>
+    <div class="step done"><span class="step-ic">✓</span> <b>Step 1 — Dispatch</b> <span class="notice">Load entered<% if (l.bol_ref) { %> · BOL <%= l.bol_ref %><% } %></span></div>
+    <% stages.forEach(function(s){ var done = !!(ev && ev[s.key] > 0); var isCurrent = !done && !currentSet; if (isCurrent) currentSet = true;
+       var item = ev ? (ev.items.filter(function(it){ return it.stage === s.key; }).slice(-1)[0] || null) : null; %>
+    <details class="step <%= done ? 'done' : (isCurrent ? 'current' : 'future') %>" <%= isCurrent ? 'open' : '' %>>
+      <summary><span class="step-ic"><%= done ? '✓' : s.n %></span> <b>Step <%= s.n %> — <%= s.title %></b>
+        <% if (done && item) { %> <span class="notice"><%= new Date(item.created_at).toLocaleString() %><% if (item.extracted && item.extracted.cargo_wt) { %> · CARGO <%= Math.round(item.extracted.cargo_wt).toLocaleString() %> lb<% if (item.extracted.ow_limit) { %> / limit <%= item.extracted.ow_limit.toLocaleString() %> lb<% } %><% if (item.extracted.overweight) { %> · <b>O/W over</b><% } %><% } %></span> <a href="/loads/evidence/<%= item.id %>/photo" target="_blank">View photo</a><% } %>
+        <% if (!done && !isCurrent) { %> <span class="notice">Comes after the step above — open this only if you need to upload early.</span><% } %>
+      </summary>
+      <div class="step-body">
+        <% if (done) { %><p class="notice">Photo on file. Upload again only to add another photo for this step.</p><% } else { %><p class="notice"><%= s.hint %></p><% } %>
+        <form method="POST" action="/loads/<%= l.id %>/evidence" enctype="multipart/form-data">
+          <input type="hidden" name="stage" value="<%= s.key %>">
+          <div><label>Photo</label><input type="file" name="photo" accept="image/*" required></div>
+          <div style="margin-top:6px"><button class="btn small" type="submit">Upload</button></div>
+        </form>
+      </div>
+    </details>
+    <% }) %>
+    <% if (ev && ev.load_out > 0 && ev.pod > 0 && ev.empty_in > 0) { %><div class="step done"><span class="step-ic">✅</span> <b>Job complete</b></div><% } %>
+    <details class="step extra">
+      <summary><span class="step-ic">+</span> <b>Detention claim</b> <span class="notice">Only with the dispatcher's confirmation message</span></summary>
+      <div class="step-body">
+        <% if (l.detention_status === 'pending') { %><p><span class="badge warn">Detention pending review <%= money(l.detention) %></span></p><% } %>
+        <form method="POST" action="/loads/<%= l.id %>/detention" enctype="multipart/form-data">
+          <div><label>Detention claim ($)</label><input name="amount" type="number" step="0.01" min="0" placeholder="50"></div>
+          <div><label>Evidence photo (dispatcher message)</label><input type="file" name="photo" accept="image/*"></div>
+          <div style="margin-top:6px"><button class="btn small secondary" type="submit">Claim detention</button></div>
+        </form>
+      </div>
+    </details>
+  </div>
+  <% }) %>
+  <% } else { %>
   <div class="table-wrap" style="margin-top:12px"><table>
     <tr><th>Date</th><th>Driver</th><th>Container / BOL</th><th>Pickup → Delivery</th><th class="num">Amount</th><th class="num">Miles</th><th>Status</th><th>Progress</th><th></th></tr>
     <% loads.forEach(function(l){ %>
@@ -162,6 +221,7 @@
     </tr>
     <% }) %>
   </table></div>
+  <% } %>
   <% if (!loads.length) { %><p class="notice">No loads found.</p><% } %>
   <p class="notice">Only <b>confirmed</b> loads count in settlement.</p>
 </div>
