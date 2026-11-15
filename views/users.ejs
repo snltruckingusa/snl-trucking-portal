@@ -10,7 +10,7 @@
     <div class="form-row">
       <div><label>Username</label><input name="username" required></div>
       <div><label>Password (8+ chars)</label><input type="password" name="password" required></div>
-      <div><label>Role</label><select name="role"><option value="driver">Driver</option><option value="admin">Admin</option></select></div>
+      <div><label>Role</label><select name="role"><option value="driver">Driver</option><option value="mechanic">Mechanic</option><option value="admin">Admin</option></select></div>
       <div><label>Linked driver</label><select name="driver_id"><option value="">— (for admin)</option>
         <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
       </select></div>
