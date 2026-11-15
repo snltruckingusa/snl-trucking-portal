@@ -237,3 +237,14 @@ CREATE TABLE IF NOT EXISTS invoice_weeks (
   sent_at TIMESTAMPTZ,
   notes TEXT
 );
+
+-- Safety training acknowledgments: one row per driver per topic, written
+-- when the driver taps "I have read and understand" on the Safety page.
+CREATE TABLE IF NOT EXISTS safety_acks (
+  id SERIAL PRIMARY KEY,
+  driver_id INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  topic TEXT NOT NULL,
+  acked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (driver_id, topic)
+);
+CREATE INDEX IF NOT EXISTS idx_safety_acks_driver ON safety_acks (driver_id);
