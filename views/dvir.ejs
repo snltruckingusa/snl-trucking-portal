@@ -23,6 +23,22 @@
   <% if (!dvir.length) { %><p class="notice">No DVIR records.</p><% } %>
 </div>
 
+<% if (isAdmin && typeof pendingLogs !== 'undefined' && pendingLogs.length) { %>
+<div class="card">
+  <h2>Repairs waiting for your review</h2>
+  <p class="notice">Entered by drivers or shops. Reviewing records the entry into the truck's history — it confirms the record, not the repair.</p>
+  <% pendingLogs.forEach(function(l){ %>
+  <div style="border-top:1px solid #eee;padding:10px 0">
+    <b>#<%= l.truck_number %></b> · <%= fmtDate(l.log_date) %> · <%= l.shop || l.mechanic || '' %> — <%= l.description %> · <b><%= money(l.cost) %></b><% if (l.entered_by) { %> · entered by <%= l.entered_by %><% } %><% if (l.photo_data) { %> · <a href="/mytruck/repairs/<%= l.id %>/photo">Invoice photo</a><% } %>
+    <div style="margin-top:6px">
+      <form class="inline" method="POST" action="/dvir/mechanic/<%= l.id %>/review"><button class="btn small" type="submit">Reviewed &amp; Recorded</button></form>
+      <form class="inline" method="POST" action="/dvir/mechanic/<%= l.id %>/delete" onsubmit="return confirm('Delete this record?')"><button class="btn small danger" type="submit">Delete</button></form>
+    </div>
+  </div>
+  <% }) %>
+</div>
+<% } %>
+
 <div class="card">
   <h2>Mechanic Logs</h2>
   <form method="POST" action="/dvir/mechanic">
@@ -43,7 +59,7 @@
     <tr>
       <td><%= fmtDate(l.log_date) %></td>
       <td>#<%= l.truck_number %></td>
-      <td><%= l.description %></td>
+      <td><%= l.description %><% if (l.status === 'pending') { %> <span class="badge warn">Pending</span><% } %></td>
       <td><%= l.mechanic || '' %></td>
       <td class="num"><%= money(l.cost) %></td>
       <td>
