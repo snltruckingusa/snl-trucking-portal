@@ -342,6 +342,28 @@ function decorateRows(rows) {
   }
 }
 
+// Prepull lists for the loads page: a driver sees his own submissions;
+// the admin sees everything waiting for approval, with the matched
+// owner's load (by container number) alongside.
+async function prepullData(req) {
+  const scope = scopedDriverId(req);
+  if (scope) {
+    const mp = await query(
+      'SELECT * FROM prepulls WHERE driver_id = $1 ORDER BY work_date DESC, id DESC LIMIT 20',
+      [scope]);
+    return { myPrepulls: mp.rows, pendingPrepulls: [] };
+  }
+  const pp = await query(
+    `SELECT p.*, d.name AS driver_name,
+            l.load_date AS match_date, l.delivery AS match_delivery, l.prepull AS match_prepull,
+            od.name AS match_driver_name
+       FROM prepulls p JOIN drivers d ON d.id = p.driver_id
+       LEFT JOIN loads l ON l.id = p.load_id
+       LEFT JOIN drivers od ON od.id = l.driver_id
+      WHERE p.status = 'pending' ORDER BY p.work_date, p.id`);
+  return { myPrepulls: [], pendingPrepulls: pp.rows };
+}
+
 function loadWhere(req) {
   const scope = scopedDriverId(req);
   const conditions = [];
@@ -386,8 +408,10 @@ router.get('/', requireLogin, async (req, res) => {
   const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
   if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
   decorateRows(r.rows);
+  const ppData = await prepullData(req);
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
+    myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
     ocr: null, ocrNotice: null, notice: req.query.notice || null,
@@ -445,8 +469,10 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
   if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
   decorateRows(r.rows);
+  const ppData = await prepullData(req);
   res.render('loads', {
     loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
+    myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
     filters: { from: '', to: '', driver_id: '', status: '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
     ocr: { ...extracted, ticket_photo: photoPath },
@@ -820,6 +846,70 @@ router.post('/:id/delete', requireLogin, async (req, res) => {
   }
   await query('DELETE FROM loads WHERE id = $1', [req.params.id]);
   res.redirect('/loads');
+});
+
+// --- Prepull work (Eric, 2026-11-14) --------------------------------
+// Standard cases live in the system so they are certain and every
+// driver can check his own record; exceptions stay with the owner
+// off-system. A submission REQUIRES the terminal ticket photo.
+
+router.post('/prepulls', requireLogin, mem.single('photo'), async (req, res) => {
+  const scope = scopedDriverId(req);
+  const driver_id = scope || parseInt(req.body.driver_id, 10);
+  if (!driver_id) return res.redirect('/loads');
+  const kind = req.body.kind === 'load_out' ? 'load_out' : 'empty_return';
+  const amount = kind === 'load_out' ? 75 : 60;
+  const container = (req.body.container_no || '').trim().toUpperCase();
+  const workDate = /^\d{4}-\d{2}-\d{2}$/.test(req.body.work_date || '') ? req.body.work_date : toISODate(new Date());
+  if (!container || !req.file) {
+    return res.redirect('/loads?notice=' + encodeURIComponent('A prepull needs the container number AND the terminal ticket photo — no ticket, no credit.'));
+  }
+  const m = await query(
+    'SELECT id FROM loads WHERE container_no = $1 AND driver_id <> $2 ORDER BY load_date DESC LIMIT 1',
+    [container, driver_id]);
+  const { text } = await ocrBuffer(req.file.buffer);
+  await query(
+    `INSERT INTO prepulls (driver_id, work_date, kind, container_no, amount, load_id, photo_data, photo_mime, ocr_text, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [driver_id, workDate, kind, container, amount, m.rows.length ? m.rows[0].id : null,
+     req.file.buffer, req.file.mimetype || 'image/jpeg', text || null, req.session.user.username]);
+  res.redirect('/loads?day=' + workDate + '&notice=' + encodeURIComponent('Prepull submitted — it pays once the owner approves it.'));
+});
+
+router.get('/prepulls/:id/photo', requireLogin, async (req, res) => {
+  const r = await query('SELECT driver_id, photo_data, photo_mime FROM prepulls WHERE id = $1', [req.params.id]);
+  if (!r.rows.length || !r.rows[0].photo_data) return res.status(404).send('No photo');
+  const scope = scopedDriverId(req);
+  if (scope && scope !== r.rows[0].driver_id) return res.status(403).send('Not your prepull');
+  res.type(r.rows[0].photo_mime || 'image/jpeg').send(r.rows[0].photo_data);
+});
+
+router.post('/prepulls/:id/approve', requireLogin, requireAdmin, async (req, res) => {
+  const r = await query('SELECT * FROM prepulls WHERE id = $1', [req.params.id]);
+  if (!r.rows.length) return res.redirect('/loads');
+  const p = r.rows[0];
+  await query("UPDATE prepulls SET status = 'approved', decided_at = now() WHERE id = $1", [p.id]);
+  // One approval books BOTH sides: the worker's credit (via settlement)
+  // and — when the owner leaves the box checked — the deduction on the
+  // matched load, logged like every other load change.
+  if (req.body.apply_deduction === '1' && p.load_id) {
+    const lr = await query('SELECT prepull FROM loads WHERE id = $1', [p.load_id]);
+    if (lr.rows.length) {
+      const oldV = parseFloat(lr.rows[0].prepull);
+      const newV = Math.round((oldV - parseFloat(p.amount)) * 100) / 100;
+      await query('UPDATE loads SET prepull = $1 WHERE id = $2', [newV, p.load_id]);
+      await query(
+        `INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value)
+         VALUES ($1,$2,'prepull',$3,$4)`,
+        [p.load_id, req.session.user.username, String(oldV), String(newV)]);
+    }
+  }
+  res.redirect(req.get('Referrer') || '/loads');
+});
+
+router.post('/prepulls/:id/reject', requireLogin, requireAdmin, async (req, res) => {
+  await query("UPDATE prepulls SET status = 'rejected', decided_at = now() WHERE id = $1", [req.params.id]);
+  res.redirect(req.get('Referrer') || '/loads');
 });
 
 module.exports = router;

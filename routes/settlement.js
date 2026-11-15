@@ -57,7 +57,18 @@ async function computeWeek(weekStartISO, driverFilter) {
        FROM fuel WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3`,
       [d.id, wsISO, weISO]
     );
-    const revenue = parseFloat(loads.rows[0].revenue);
+    let revenue = parseFloat(loads.rows[0].revenue);
+    // Approved prepull work (Eric, 2026-11-14): doing another driver's
+    // leg pays +$60 (empty return) / +$75 (load out) into THIS driver's
+    // week income — everything splits from total income. The matching
+    // deduction sits on the owner's load, so the week stays balanced.
+    const ppRes = await query(
+      `SELECT COALESCE(SUM(amount),0) AS total FROM prepulls
+        WHERE driver_id = $1 AND status = 'approved' AND work_date >= $2 AND work_date <= $3`,
+      [d.id, wsISO, weISO]
+    );
+    const prepullCredit = parseFloat(ppRes.rows[0].total);
+    revenue += prepullCredit;
     const miles = parseFloat(loads.rows[0].miles);
     const daysWorked = parseInt(loads.rows[0].days_worked, 10);
     const fuelCost = parseFloat(fuel.rows[0].fuel_cost);
@@ -143,7 +154,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     if (weekendApplied) driverPay = weekend.adjustedPay;
     const companyNet = Math.round((net - driverPay) * 100) / 100;
     rows.push({
-      driver: d, revenue, fuelCost, insurance, net, driverPay, companyNet,
+      driver: d, revenue, prepullCredit, fuelCost, insurance, net, driverPay, companyNet,
       miles, gallons, mpg, mpg2w, daysWorked,
       splitPct, fuelStd,
       loads: loadRows.rows,
