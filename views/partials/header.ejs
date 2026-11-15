@@ -17,7 +17,7 @@
   if (user && user.role === 'admin') {
     top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/dvir', 'Maintenance'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
-    else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
+    else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/drivers/overview', 'Driver Overview'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
     else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
