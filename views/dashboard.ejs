@@ -118,6 +118,7 @@
     <h2>Needs attention</h2>
     <% var attnAny = false; %>
     <% if (safetyDone < safetyTotal) { attnAny = true; %><p>🛡️ <a href="/safety">Safety training</a> — <%= safetyDone %> of <%= safetyTotal %> done. Please finish the rest.</p><% } %>
+    <% if (typeof missingDocs !== 'undefined' && missingDocs.length) { attnAny = true; %><p>📁 Documents missing: <b><%= missingDocs.join(', ') %></b> — <a href="/documents">open My File</a> and upload them right from your checklist.</p><% } %>
     <% if (typeof evidenceMissing !== 'undefined' && evidenceMissing.length) { attnAny = true; %>
     <p style="margin-bottom:4px">📦 Evidence missing — upload the tickets so settlement and billing are not held up:</p>
     <ul class="check-list">

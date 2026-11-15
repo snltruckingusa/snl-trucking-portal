@@ -6,11 +6,31 @@
 <h1>My Truck — #<%= truck %></h1>
 
 <div class="card">
-  <h2>Truck Documents</h2>
-  <% if (!vdocs.length) { %><p class="notice">No truck documents on file yet — the owner is adding them. The originals ride in the truck.</p><% } else { %>
+  <h2>Truck Documents — checklist</h2>
+  <div class="boxlist">
+    <% vchecklist.forEach(function(c){ %>
+    <div class="boxitem">
+      <div class="bi-main">
+        <b><%= c.label %></b> <span class="notice">· <%= c.who === 'Driver' ? 'You keep this current' : 'Kept by the company' %></span><br>
+        <% if (c.doc) { %>✓ <a href="/mytruck/vehicle-docs/<%= c.doc.id %>/download"><%= c.doc.original_name %></a><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% var xi = expiryInfo(c.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } } %><% } else if (c.optional) { %>— only if this truck has one<% } else { %><span class="badge flag">Missing</span><% } %>
+        <% if (c.pendingDoc) { %><br>⏳ <span class="badge warn">New upload waiting for owner review</span> — <%= c.pendingDoc.original_name %> (<%= fmtDate(c.pendingDoc.uploaded_at) %>)<% } %>
+      </div>
+      <% if (c.who === 'Driver') { %>
+      <form class="bi-form" method="POST" action="/mytruck/vehicle-docs/upload" enctype="multipart/form-data">
+        <input type="hidden" name="category" value="<%= c.key %>">
+        <input type="file" name="file" required>
+        <input type="date" name="expires_on" required title="Expiry date — required so renewal alerts work">
+        <button class="btn small" type="submit"><%= c.doc ? 'Upload new' : 'Upload' %></button>
+      </form>
+      <% } %>
+    </div>
+    <% }) %>
+  </div>
+  <% var extraDocs = vdocs.filter(function(d){ return d.status !== 'pending' && !vchecklist.some(function(c){ return c.key === d.category; }); }); %>
+  <% if (extraDocs.length) { %>
   <div class="table-wrap"><table>
     <tr><th>Document</th><th>File</th><th>Expires</th></tr>
-    <% vdocs.forEach(function(doc){ %>
+    <% extraDocs.forEach(function(doc){ %>
     <tr>
       <td><%= vdCategories[doc.category] || doc.category %></td>
       <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
@@ -18,8 +38,8 @@
     </tr>
     <% }) %>
   </table></div>
-  <p class="notice">Roadside inspection? Show the officer the copy right here on your phone.</p>
   <% } %>
+  <p class="notice">Roadside inspection? Show the officer the confirmed copy right here on your phone. A new upload becomes official when the owner confirms it — the confirmed copy stays in place until then.</p>
 </div>
 
 <div class="card">
@@ -79,6 +99,21 @@
 <% } else { %>
 <h1>My Truck — Vehicle Register</h1>
 
+<% if (pendingVdocs.length) { %>
+<div class="card">
+  <h2>Waiting for your review — truck documents</h2>
+  <% pendingVdocs.forEach(function(doc){ %>
+  <div style="border-top:1px solid #eee;padding:10px 0">
+    <b>#<%= doc.truck_number %></b> · <%= vdCategories[doc.category] || doc.category %> · <a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a> · uploaded by <%= doc.uploaded_by || 'driver' %> · <%= fmtDate(doc.uploaded_at) %><% if (doc.expires_on) { %> · expires <%= fmtDate(doc.expires_on) %><% } %>
+    <div style="margin-top:6px">
+      <form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form>
+      <form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/delete" onsubmit="return confirm('Delete this truck document?')"><button class="btn small danger" type="submit">Delete</button></form>
+    </div>
+  </div>
+  <% }) %>
+</div>
+<% } %>
+
 <div class="card">
   <form method="GET" action="/mytruck" class="form-row" style="align-items:end">
     <div><label>Truck</label><select name="truck">
@@ -104,13 +139,14 @@
   </form>
   <% if (!vdocs.length) { %><p class="notice">No documents for this truck yet.</p><% } else { %>
   <div class="table-wrap"><table>
-    <tr><th>Document</th><th>File</th><th>Expires</th><th></th></tr>
+    <tr><th>Document</th><th>File</th><th>Expires</th><th>Status</th><th></th></tr>
     <% vdocs.forEach(function(doc){ %>
     <tr>
       <td><%= vdCategories[doc.category] || doc.category %></td>
       <td><a href="/mytruck/vehicle-docs/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/delete" onsubmit="return confirm('Delete this truck document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %></td>
+      <td><% if (doc.status === 'pending') { %><form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form> <% } %><form class="inline" method="POST" action="/mytruck/vehicle-docs/<%= doc.id %>/delete" onsubmit="return confirm('Delete this truck document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
     </tr>
     <% }) %>
   </table></div>

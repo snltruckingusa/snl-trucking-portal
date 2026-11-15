@@ -12,6 +12,11 @@
   <% if (pendingChange) { %>
     <p class="notice"><span class="badge warn">Waiting for owner review</span> You sent changes on <%= fmtDate(pendingChange.created_at) %>. They take effect when the owner confirms them. You can still edit and re-send below.</p>
   <% } %>
+  <ul class="check-list">
+    <% profileItems.forEach(function(i){ %>
+    <li><% if (i.done) { %>✓ <b><%= i.label %></b><% } else { %><span class="badge flag">Missing</span> <%= i.label %> — <% if (i.owner) { %><span class="notice">the owner adds this one</span><% } else { %><span class="notice">fill it in below</span><% } %><% } %></li>
+    <% }) %>
+  </ul>
   <form method="POST" action="/documents/profile">
     <div class="form-row">
       <div><label>Address</label><input type="text" name="address" value="<%= (pendingChange ? pendingChange.address : driver.address) || '' %>" placeholder="1428 Fern Dr, Macon, GA 31210"></div>
@@ -27,6 +32,26 @@
 
 <div class="card">
   <h2>2 · My Documents</h2>
+  <div class="boxlist">
+    <% checklist.forEach(function(c){ %>
+    <div class="boxitem">
+      <div class="bi-main">
+        <b><%= c.label %></b> <span class="notice">· <%= c.who === 'Driver' ? 'You provide this' : 'Kept by the company' %></span><br>
+        <% if (c.doc && c.doc.status === 'pending') { %>⏳ <span class="badge warn">Waiting for owner review</span> — uploaded <%= fmtDate(c.doc.uploaded_at) %>
+        <% } else if (c.doc) { %>✓ On file — <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% var xi = expiryInfo(c.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } } %>
+        <% } else { %><span class="badge flag">Missing</span><% } %>
+      </div>
+      <% if (c.who === 'Driver') { %>
+      <form class="bi-form" method="POST" action="/documents/upload" enctype="multipart/form-data">
+        <input type="hidden" name="category" value="<%= c.key %>">
+        <input type="file" name="file" required>
+        <% if (c.expires) { %><input type="date" name="expires_on" required title="Expiry date — required so renewal alerts work"><% } %>
+        <button class="btn small" type="submit"><%= c.doc ? 'Upload new' : 'Upload' %></button>
+      </form>
+      <% } %>
+    </div>
+    <% }) %>
+  </div>
   <form method="POST" action="/documents/upload" enctype="multipart/form-data">
     <div class="form-row">
       <div><label>Document type</label><select name="category">
