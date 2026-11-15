@@ -70,6 +70,7 @@ app.use('/settlement', require('./routes/settlement'));
 app.use('/invoice', require('./routes/invoice'));
 app.use('/documents', require('./routes/documents'));
 app.use('/dvir', require('./routes/dvir'));
+app.use('/mytruck', require('./routes/mytruck'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
