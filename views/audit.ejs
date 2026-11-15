@@ -1,0 +1,52 @@
+<%- include('partials/header', { title: 'Audit' }) %>
+<h1>Audit — Driver Files &amp; Vehicles</h1>
+<p class="notice">One screen for what an auditor would ask for. Read off the same checklists as My File and My Truck, so this page can never disagree with what a driver sees. Expiry stages: within 60 days = prepare, within 30 days = urgent, past = expired.</p>
+
+<div class="grid">
+  <div class="stat"><div class="label">Active drivers</div><div class="value"><%= summary.activeDrivers %></div></div>
+  <div class="stat"><div class="label">Packets fully complete</div><div class="value"><%= summary.completeDrivers %></div></div>
+  <div class="stat"><div class="label">Missing items (active drivers)</div><div class="value"><%= summary.fleetMissing %></div></div>
+  <div class="stat"><div class="label">Expired or expiring ≤60 days</div><div class="value"><%= summary.fleetExpiring %></div></div>
+  <div class="stat"><div class="label">Documents waiting for review</div><div class="value"><%= summary.fleetPending %></div></div>
+</div>
+
+<div class="card">
+  <h2>Drivers</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Driver</th><th>Truck</th><th>Packet</th><th>Missing</th><th>Expiry watch</th><th>Profile gaps</th><th>Pending</th></tr>
+    <% driverRows.forEach(function(r){ %>
+    <tr>
+      <td><b><%= r.driver.name %></b><% if (!r.driver.active) { %> <span class="badge">Inactive</span><% } %></td>
+      <td>#<%= r.driver.truck_number || '' %></td>
+      <td><b><%= r.have %> / <%= r.total %></b></td>
+      <td><% if (r.missing.length) { %><span class="badge flag"><%= r.missing.join(', ') %></span><% } else { %>—<% } %></td>
+      <td>
+        <% r.expired.forEach(function(l){ %><span class="badge flag"><%= l %> — Expired</span> <% }) %>
+        <% r.expiring.forEach(function(e){ %><span class="badge warn"><%= e.label %> — <%= e.days %>d</span> <% }) %>
+        <% if (!r.expired.length && !r.expiring.length) { %>—<% } %>
+      </td>
+      <td><% if (r.profileMissing.length) { %><span class="badge warn"><%= r.profileMissing.join(', ') %></span><% } else { %>—<% } %></td>
+      <td><%= r.pending || '—' %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>Vehicles</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Truck</th><th>VIN (last 6)</th><th>Plate</th><th>Registration</th><th>Annual inspection</th><th>Missing</th></tr>
+    <% vehicleRows.forEach(function(r){ %>
+    <tr>
+      <td><b>#<%= r.truck %></b></td>
+      <td><%= r.vehicle && r.vehicle.vin ? '…' + String(r.vehicle.vin).slice(-6) : '—' %></td>
+      <td><%= r.vehicle && r.vehicle.plate ? r.vehicle.plate : '—' %></td>
+      <td><% if (r.reg && r.reg.doc && r.reg.doc.expires_on) { %><%= fmtDate(r.reg.doc.expires_on) %><% var xi = expiryInfo(r.reg.doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else if (r.reg && r.reg.doc) { %>On file (no expiry date)<% } else { %>—<% } %></td>
+      <td><% if (r.insp && r.insp.doc && r.insp.doc.expires_on) { %><%= fmtDate(r.insp.doc.expires_on) %><% var xi2 = expiryInfo(r.insp.doc.expires_on); if (xi2) { %> <span class="badge <%= xi2.cls %>"><%= xi2.label %></span><% } %><% } else if (r.insp && r.insp.doc) { %>On file (no expiry date)<% } else { %>—<% } %></td>
+      <td><% if (r.missing.length) { %><span class="badge flag"><%= r.missing.join(', ') %></span><% } else { %>—<% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">Registration and inspection copies live in My Truck — the newest confirmed copy there is the official one.</p>
+</div>
+<%- include('partials/footer') %>
