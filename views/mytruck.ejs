@@ -125,6 +125,19 @@
 
 <% if (truck) { %>
 <div class="card">
+  <h2>#<%= truck %> — Truck details</h2>
+  <form method="POST" action="/mytruck/vehicle">
+    <input type="hidden" name="truck_number" value="<%= truck %>">
+    <div class="form-row">
+      <div><label>VIN (full)</label><input name="vin" value="<%= vehicle ? (vehicle.vin || '') : '' %>" placeholder="3AKJHHDR7LSLL0822"></div>
+      <div><label>Plate</label><input name="plate" value="<%= vehicle ? (vehicle.plate || '') : '' %>" placeholder="YXG983"></div>
+      <div style="align-self:end"><button type="submit">Save truck details</button></div>
+    </div>
+  </form>
+  <p class="notice">The dashboard roster shows the truck number with the last 6 of the VIN. The audit page uses this same record — enter it once.</p>
+</div>
+
+<div class="card">
   <h2>#<%= truck %> — Add truck document</h2>
   <form method="POST" action="/mytruck/vehicle-docs/upload" enctype="multipart/form-data">
     <input type="hidden" name="truck_number" value="<%= truck %>">
