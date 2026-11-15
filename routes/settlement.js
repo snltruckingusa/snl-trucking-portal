@@ -263,6 +263,58 @@ router.post('/weekend-unconfirm', requireLogin, requireAdmin, async (req, res) =
   res.redirect('/settlement?week=' + week);
 });
 
+// Printable weekly statement (one driver) — the driver saves/prints it
+// as a PDF from the browser. A driver sees only his own; the admin can
+// print any driver's.
+router.get('/statement', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const driverId = scope || parseInt(req.query.driver_id, 10);
+  if (!driverId) return res.redirect('/settlement');
+  let wsISO = toISODate(weekStart(new Date()));
+  if (req.query.week) {
+    const d = new Date(req.query.week + 'T00:00:00');
+    if (!isNaN(d)) wsISO = toISODate(weekStart(d));
+  }
+  const data = await computeWeek(wsISO, driverId);
+  if (!data.rows.length) return res.redirect('/settlement');
+  res.render('statement-print', {
+    r: data.rows[0], weekStartISO: data.weekStartISO, weekEndISO: data.weekEndISO,
+    generatedOn: toISODate(new Date()),
+  });
+});
+
+// Printable monthly summary (one driver): the Sun–Sat settlement weeks
+// that overlap the month, totaled. The weekly statements remain the pay
+// documents; this is the driver's monthly record.
+router.get('/monthly', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const driverId = scope || parseInt(req.query.driver_id, 10);
+  if (!driverId) return res.redirect('/settlement');
+  const mParam = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : toISODate(new Date()).slice(0, 7);
+  const first = new Date(mParam + '-01T00:00:00');
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const weeks = [];
+  let ws = weekStart(first);
+  while (ws <= lastDay) {
+    const data = await computeWeek(toISODate(ws), driverId);
+    if (data.rows.length) weeks.push({ weekStartISO: data.weekStartISO, weekEndISO: data.weekEndISO, r: data.rows[0] });
+    ws = addDays(ws, 7);
+  }
+  const drv = await query('SELECT * FROM drivers WHERE id = $1', [driverId]);
+  if (!drv.rows.length) return res.redirect('/settlement');
+  const totals = weeks.reduce((a, w) => ({
+    revenue: a.revenue + w.r.revenue, fuelCost: a.fuelCost + w.r.fuelCost,
+    insurance: a.insurance + w.r.insurance, net: a.net + w.r.net,
+    driverPay: a.driverPay + w.r.driverPay, miles: a.miles + w.r.miles,
+    gallons: a.gallons + w.r.gallons, daysWorked: a.daysWorked + w.r.daysWorked,
+    loads: a.loads + w.r.loads.length,
+  }), { revenue: 0, fuelCost: 0, insurance: 0, net: 0, driverPay: 0, miles: 0, gallons: 0, daysWorked: 0, loads: 0 });
+  res.render('monthly-print', {
+    driver: drv.rows[0], monthLabel: first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    weeks, totals, generatedOn: toISODate(new Date()),
+  });
+});
+
 // MPG history (per driver, per week).
 router.get('/mpg', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);

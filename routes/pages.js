@@ -73,9 +73,19 @@ router.get('/', requireLogin, async (req, res) => {
       [scope]
     );
     const expiringOwn = await query(
-      `SELECT COUNT(*) AS n FROM documents
-       WHERE driver_id = $1 AND expires_on IS NOT NULL AND expires_on <= CURRENT_DATE + 30`,
+      `SELECT * FROM documents
+       WHERE driver_id = $1 AND expires_on IS NOT NULL AND expires_on <= CURRENT_DATE + 45
+       ORDER BY expires_on ASC LIMIT 10`,
       [scope]
+    );
+    const weekLoads = await query(
+      'SELECT COUNT(*) AS n FROM loads WHERE driver_id = $1 AND load_date >= $2 AND load_date <= $3',
+      [scope, wsISO, weISO]
+    );
+    const weekFuel = await query(
+      `SELECT COALESCE(SUM(cost),0) AS cost, COALESCE(SUM(gallons),0) AS gallons
+       FROM fuel WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3`,
+      [scope, wsISO, weISO]
     );
     const safetyAck = await query(
       'SELECT COUNT(*) AS n FROM safety_acks WHERE driver_id = $1',
@@ -106,7 +116,8 @@ router.get('/', requireLogin, async (req, res) => {
       isAdmin: false, driver,
       today, todayLoads: todayLoads.rows, todayFuel: todayFuel.rows[0],
       pendingCount: parseInt(pendingOwn.rows[0].n, 10),
-      expiringCount: parseInt(expiringOwn.rows[0].n, 10),
+      expiringCount: expiringOwn.rows.length, expiringDocs: expiringOwn.rows,
+      weekLoadCount: parseInt(weekLoads.rows[0].n, 10), weekFuel: weekFuel.rows[0],
       safetyDone: parseInt(safetyAck.rows[0].n, 10), safetyTotal: SAFETY_TOPICS.length,
       thisWeek: thisWeek.rows[0] || null, lastWeek: lastWeek.rows[0] || null,
       weekStartISO: wsISO, weekEndISO: weISO, lastWeekStartISO: lastWsISO, lastWeekEndISO: lastWeISO,
