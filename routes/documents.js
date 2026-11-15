@@ -36,6 +36,9 @@ const CATEGORIES = {
   clearinghouse: 'Clearinghouse Query',
   road_test: 'Road Test Record',
   application: 'Application',
+  annual_review: 'Annual Review',
+  clearinghouse_consent: 'Clearinghouse Consent',
+  safety_history: 'Safety Performance History',
   registration: 'Registration',
   other: 'Other',
 };
