@@ -402,6 +402,27 @@ router.post('/:id/evidence', requireLogin, uploadMem.single('photo'), async (req
     ? req.body.stage : 'other';
   if (req.file) {
     await saveEvidence(existing.rows[0].id, stage, req.file, req.session.user.username);
+    // Keep the execution progress in step with the evidence on file:
+    // when the photo for the next stage exists, advance — possibly more
+    // than once (e.g. the load-out ticket uploaded after the POD).
+    let prog = existing.rows[0].progress;
+    for (let i = 0; i < 3; i++) {
+      const nxt = nextProgress(prog);
+      if (!nxt || nxt === prog) break;
+      const st = PROGRESS_EVIDENCE[nxt];
+      if (!st) break;
+      const cnt = await query(
+        'SELECT COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage = $2',
+        [existing.rows[0].id, st]
+      );
+      if (parseInt(cnt.rows[0].n, 10) < 1) break;
+      if (nxt === 'returned') {
+        await query('UPDATE loads SET progress = $1, returned_on = COALESCE(returned_on, CURRENT_DATE) WHERE id = $2', [nxt, existing.rows[0].id]);
+      } else {
+        await query('UPDATE loads SET progress = $1 WHERE id = $2', [nxt, existing.rows[0].id]);
+      }
+      prog = nxt;
+    }
   }
   res.redirect(req.get('Referrer') || '/loads');
 });
