@@ -155,6 +155,23 @@ async function ocrBuffer(buffer) {
 
 // Save one evidence photo for a load: bytes into the DB + OCR + EIR parse.
 // Returns the parsed EIR fields (possibly all-empty when OCR failed).
+// Appointment is TIME ONLY (Eric, 2026-11-14): the load already has a
+// date, so the driver never picks a date twice. The stored timestamp
+// is the load's date + this time.
+function apptTimeForInput(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function apptFromParts(loadDate, timeStr) {
+  if (!loadDate || !timeStr) return null;
+  const d = new Date(loadDate + 'T' + timeStr + ':00');
+  return isNaN(d) ? null : d;
+}
+
 async function saveEvidence(loadId, stage, file, username) {
   let extracted = null;
   let ocrText = null;
@@ -271,7 +288,7 @@ async function weekClosed(driverId, dateISO) {
   return r.rows.length > 0 && r.rows[0].status === 'closed';
 }
 
-const LOG_FIELDS = ['load_date', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
+const LOG_FIELDS = ['load_date', 'job_type', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
   'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
@@ -306,7 +323,7 @@ async function evidenceSummary(loadIds) {
     [loadIds]
   );
   for (const row of r.rows) {
-    if (!map[row.load_id]) map[row.load_id] = { load_out: 0, pod: 0, empty_in: 0, detention: 0, other: 0, ow: false, items: [] };
+    if (!map[row.load_id]) map[row.load_id] = { load_out: 0, pod: 0, empty_in: 0, detention: 0, other: 0, dispatch: 0, load_in: 0, empty_out: 0, ow: false, items: [] };
     map[row.load_id][row.stage] += 1;
     if (row.extracted && row.extracted.overweight) map[row.load_id].ow = true;
     map[row.load_id].items.push(row);
@@ -393,7 +410,8 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   if (disp.is_dispatch) {
     extracted = {
       container_no: disp.container_no, bol_ref: disp.bol_ref, return_location: '',
-      pickup: '', delivery: disp.delivery, appointment: apptForInput(disp.appointment),
+      pickup: '', delivery: disp.delivery, appointment_time: apptTimeForInput(disp.appointment),
+      job_type: disp.job_type,
       empty_container: disp.empty_container, empty_pin: disp.empty_pin,
       load_pin: disp.load_pin, notes: disp.delivery_line,
     };
@@ -404,7 +422,8 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
     // place). A gate ticket does not prefill a new load; the driver
     // uploads it inside the load's own ticket step instead.
     extracted = { container_no: '', bol_ref: '', return_location: '', pickup: '', delivery: '', appointment: '' };
-    extracted.appointment = '';
+    extracted.appointment_time = '';
+    extracted.job_type = 'standard';
     extracted.empty_container = '';
     extracted.empty_pin = '';
     extracted.load_pin = '';
@@ -444,7 +463,8 @@ router.post('/', requireLogin, async (req, res) => {
   if (scope && await weekClosed(driver_id, req.body.load_date)) {
     return res.status(403).send('This week is already settled (closed). Ask the owner to add or correct entries.');
   }
-  const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
+  const appointment = apptFromParts(req.body.load_date, req.body.appointment_time);
+  const jobType = ['standard', 'in_out_empty', 'in_out_load'].includes(req.body.job_type) ? req.body.job_type : 'standard';
   const delivery = (req.body.delivery || '').trim() || null;
   let rate = num(req.body.rate), fsc = num(req.body.fsc), miles = num(req.body.miles);
   // Lane chart suggestion: when money/miles were left blank, prefill from
@@ -467,10 +487,10 @@ router.post('/', requireLogin, async (req, res) => {
   // wait for the owner's dispatch approval.
   const dispatchOk = !scope;
   const ticketsOk = finalStatus === 'confirmed';
-  await query(
+  const ins = await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin, job_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      delivery,
@@ -480,8 +500,21 @@ router.post('/', requireLogin, async (req, res) => {
      miles, finalStatus,
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
      (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk,
-     (req.body.empty_pin || '').trim() || null, (req.body.load_pin || '').trim() || null]
+     (req.body.empty_pin || '').trim() || null, (req.body.load_pin || '').trim() || null, jobType]
   );
+  // The dispatch capture is the root document of the load (Eric,
+  // 2026-11-14): everything on the skeleton was read from it, so the
+  // photo itself stays on file as Step 1 evidence — stored durably in
+  // the database like the ticket photos.
+  if (req.body.ticket_photo && ins.rows.length) {
+    try {
+      const p = path.join(__dirname, '..', req.body.ticket_photo);
+      if (fs.existsSync(p)) {
+        await saveEvidence(ins.rows[0].id, 'dispatch',
+          { buffer: fs.readFileSync(p), mimetype: 'image/jpeg' }, req.session.user.username);
+      }
+    } catch (e) { /* best-effort — the load itself is saved */ }
+  }
   // Drivers land on the day they just entered, so the new load is on screen.
   res.redirect(scope ? '/loads?day=' + encodeURIComponent(req.body.load_date || '') : '/loads');
 });
@@ -496,9 +529,10 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   if (scope && await weekClosed(old.driver_id, fmtDate(old.load_date))) {
     return res.status(403).send('This week is already settled (closed). Corrections go through the owner.');
   }
-  const appointment = req.body.appointment ? new Date(req.body.appointment) : null;
+  const appointment = apptFromParts(req.body.load_date, req.body.appointment_time);
   const newVals = {
     load_date: req.body.load_date,
+    job_type: ['standard', 'in_out_empty', 'in_out_load'].includes(req.body.job_type) ? req.body.job_type : (old.job_type || 'standard'),
     container_no: (req.body.container_no || '').trim() || null,
     empty_container: (req.body.empty_container || '').trim().toUpperCase() || null,
     empty_pin: (req.body.empty_pin || '').trim() || null,
@@ -541,7 +575,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
        overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
        dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
        tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END,
-       empty_pin=$20, load_pin=$21
+       empty_pin=$20, load_pin=$21, job_type=$22
      WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
@@ -550,7 +584,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
      (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
-     newVals.empty_pin, newVals.load_pin]
+     newVals.empty_pin, newVals.load_pin, newVals.job_type]
   );
   res.redirect('/loads');
 });
@@ -612,7 +646,7 @@ router.post('/:id/evidence', requireLogin, uploadMem.single('photo'), async (req
   const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
   if (!existing.rows.length) return res.redirect('/loads');
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
-  const stage = ['load_out', 'pod', 'empty_in', 'detention', 'other', 'empty_return'].includes(req.body.stage)
+  const stage = ['load_out', 'pod', 'empty_in', 'detention', 'other', 'empty_return', 'load_in', 'empty_out'].includes(req.body.stage)
     ? req.body.stage : 'other';
   if (req.file && stage === 'empty_return') {
     // Eric's flow sheet: the day's first terminal photo is the EMPTY
@@ -724,14 +758,20 @@ router.post('/:id/approve-dispatch', requireLogin, requireAdmin, async (req, res
 });
 
 router.post('/:id/approve-tickets', requireLogin, requireAdmin, async (req, res) => {
+  // The ticket pair that must be on file depends on the job type:
+  // a Load in + Empty out job has no load-out/empty-in pair.
+  const lr = await query('SELECT job_type FROM loads WHERE id = $1', [req.params.id]);
+  const jt = lr.rows.length ? (lr.rows[0].job_type || 'standard') : 'standard';
+  const need = jt === 'in_out_empty' ? ['load_in', 'empty_out'] : ['load_out', 'empty_in'];
+  const labels = { load_in: 'load-in', load_out: 'load-out', empty_in: 'empty-in', empty_out: 'empty-out' };
   const cnt = await query(
-    "SELECT stage, COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage IN ('load_out','empty_in') GROUP BY stage",
-    [req.params.id]
+    'SELECT stage, COUNT(*) AS n FROM load_evidence WHERE load_id = $1 AND stage = ANY($2) GROUP BY stage',
+    [req.params.id, need]
   );
   const have = {};
   cnt.rows.forEach(r => { have[r.stage] = parseInt(r.n, 10); });
-  if (!have.load_out || !have.empty_in) {
-    return res.redirect('/loads?notice=' + encodeURIComponent('Tickets are not all in yet — ticket approval needs the load-out ticket AND the empty-in ticket on file.'));
+  if (!have[need[0]] || !have[need[1]]) {
+    return res.redirect('/loads?notice=' + encodeURIComponent(`Tickets are not all in yet — ticket approval needs the ${labels[need[0]]} ticket AND the ${labels[need[1]]} ticket on file.`));
   }
   await query('UPDATE loads SET tickets_ok = TRUE WHERE id = $1', [req.params.id]);
   res.redirect(req.get('Referrer') || '/loads');
