@@ -76,6 +76,16 @@
   </div>
 
 <% } else { %>
+  <style>
+    .menu-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; }
+    .menu-tile { display:flex; flex-direction:column; gap:2px; padding:16px 14px; border:1px solid #d8d8d8; border-radius:12px; background:#fff; text-decoration:none; color:inherit; }
+    .menu-tile:active { background:#f2f6ff; }
+    .menu-tile .mt-icon { font-size:26px; line-height:1.1; }
+    .menu-tile .mt-title { font-weight:700; font-size:17px; }
+    .menu-tile .mt-sub { font-size:12.5px; color:#666; }
+    .menu-tile.wide { grid-column:1 / -1; flex-direction:row; align-items:center; gap:14px; }
+    .menu-tile .mt-badge { margin-left:auto; }
+  </style>
   <div class="card">
     <h2><%= driver.name %> (#<%= driver.truck_number || '' %>) — Today (<%= today %>)</h2>
 
@@ -109,12 +119,48 @@
       <% }) %>
     <% } %>
 
-    <div class="quick-actions">
-      <a class="btn" href="/loads">Add dispatch / ticket photo</a>
-      <a class="btn secondary" href="/fuel">Fuel</a>
-      <a class="btn secondary" href="/dvir">Maintenance</a>
-    </div>
     <p class="notice">Fuel today: <%= todayFuel.gallons %> gal · <%= money(todayFuel.cost) %></p>
+  </div>
+
+  <div class="card">
+    <h2>Menu</h2>
+    <div class="menu-grid">
+      <a class="menu-tile wide" href="/loads">
+        <span class="mt-icon">📦</span>
+        <span><span class="mt-title">Loads</span><br><span class="mt-sub">Enter a load from a dispatch or ticket photo, and view my loads</span></span>
+        <% if (pendingCount > 0) { %><span class="mt-badge badge warn"><%= pendingCount %> pending</span><% } %>
+      </a>
+      <a class="menu-tile" href="/fuel">
+        <span class="mt-icon">⛽</span>
+        <span class="mt-title">Fuel</span>
+        <span class="mt-sub">Enter fuel &amp; see my gallons</span>
+      </a>
+      <a class="menu-tile" href="/settlement">
+        <span class="mt-icon">💵</span>
+        <span class="mt-title">Settlement</span>
+        <span class="mt-sub">My pay statements</span>
+      </a>
+      <a class="menu-tile" href="/documents">
+        <span class="mt-icon">📁</span>
+        <span class="mt-title">Documents</span>
+        <span class="mt-sub">My documents<% if (expiringCount > 0) { %> · <%= expiringCount %> expiring soon<% } %></span>
+      </a>
+      <a class="menu-tile" href="/safety">
+        <span class="mt-icon">🛡️</span>
+        <span class="mt-title">Safety</span>
+        <span class="mt-sub">Training · <%= safetyDone %> of <%= safetyTotal %> done</span>
+      </a>
+      <a class="menu-tile" href="/dvir">
+        <span class="mt-icon">🔧</span>
+        <span class="mt-title">Maintenance</span>
+        <span class="mt-sub">Repairs &amp; inspections</span>
+      </a>
+      <a class="menu-tile" href="/more">
+        <span class="mt-icon">⋯</span>
+        <span class="mt-title">More</span>
+        <span class="mt-sub">Rates · Benefits · Rules</span>
+      </a>
+    </div>
   </div>
 
   <div class="card">
@@ -141,7 +187,6 @@
       <div class="value"><%= lastWeek ? money(lastWeek.driver_pay) : '—' %></div>
       <div class="notice"><%= lastWeek ? (lastWeek.status === 'closed' ? 'Closed' : 'Open') : 'No record' %></div></div>
   </div>
-  <p><a class="btn" href="/settlement">View my settlement</a></p>
 <% } %>
 
 <%- include('partials/footer') %>
