@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S&L Trucking LLC — Container Trucking · Pooler / Savannah, Georgia</title>
+<meta name="description" content="S&L Trucking LLC is a container trucking company based in Pooler, Georgia, serving the Savannah area and the Southeast. USDOT 4227507 · MC-1639360.">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .pub-top { background:#0f2a4a; color:#fff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; }
+  .pub-top .brand { font-size:20px; font-weight:700; letter-spacing:.3px; }
+  .pub-top .brand small { display:block; font-size:12px; font-weight:400; color:#bcd; }
+  .pub-top a.login-btn { background:#fff; color:#0f2a4a; font-weight:700; padding:9px 16px; border-radius:8px; text-decoration:none; }
+  .pub-wrap { max-width:960px; margin:0 auto; padding:18px 14px 40px; }
+  .hero { text-align:center; padding:30px 10px 8px; }
+  .hero h1 { font-size:34px; margin:0 0 6px; color:#0f2a4a; }
+  .hero p { font-size:17px; color:#445; margin:4px 0; }
+  .svc { display:flex; flex-wrap:wrap; gap:14px; }
+  .svc .groupbox { flex:1 1 240px; margin:0; }
+  .svc h3 { margin:2px 0 6px; color:#0f2a4a; }
+  .cred { text-align:center; font-size:15px; padding:6px 0 0; }
+  .hire { border:1.5px solid #2e7d32; background:#f2f8f2; border-radius:10px; padding:14px 16px; margin:16px 0; text-align:center; font-size:16px; }
+  .pub-foot { text-align:center; color:#667; font-size:13px; padding:18px 10px 30px; }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+  textarea { width:100%; min-height:110px; }
+</style>
+</head>
+<body>
+<div class="pub-top">
+  <div class="brand">S&amp;L Trucking LLC<small>Container Trucking · Pooler, Georgia</small></div>
+  <a class="login-btn" href="/login">Staff Login</a>
+</div>
+
+<div class="pub-wrap">
+  <div class="hero">
+    <h1>Container Trucking You Can Count On</h1>
+    <p>Daily container moves in the Savannah area and across the Southeast.</p>
+    <p>Business inquiries: <b>(213) 503-5668</b></p>
+  </div>
+
+  <div class="svc">
+    <div class="groupbox">
+      <h3>Container Transport</h3>
+      <p>20 ft and 40 ft container moves between terminals, warehouses, and customer sites — import and export, loaded and empty.</p>
+    </div>
+    <div class="groupbox">
+      <h3>Reefer &amp; Genset</h3>
+      <p>Refrigerated container moves with genset service, handled by drivers trained on temperature-controlled freight.</p>
+    </div>
+    <div class="groupbox">
+      <h3>Regional Coverage</h3>
+      <p>Based in Pooler, Georgia — serving the Savannah area daily, with regional runs across Georgia and the Southeast.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>About S&amp;L Trucking</h2>
+    <p>S&amp;L Trucking LLC is a container trucking company based in Pooler, Georgia. Our company tractors and professional drivers run container freight in the Savannah area every day, and our dispatch runs on a simple rule: every load is tracked from the order to the empty return, and every driver gets home daily.</p>
+    <p class="cred"><b>USDOT 4227507</b> · <b>MC-1639360</b> · Licensed &amp; insured · Pooler, Georgia</p>
+  </div>
+
+  <div class="hire"><b>Now hiring CDL-A drivers</b> — home daily, weekly settlement. Leave a message below and we will get back to you.</div>
+
+  <div class="card" id="contact">
+    <h2>Leave a Message</h2>
+    <% if (typeof sent !== 'undefined' && sent) { %>
+    <div class="alert">Thank you — your message has been received. We will get back to you shortly.</div>
+    <% } %>
+    <form method="POST" action="/contact">
+      <div class="form-row">
+        <div><label>Your name</label><input name="name" required maxlength="120"></div>
+        <div><label>Phone or email</label><input name="contact" required maxlength="160"></div>
+      </div>
+      <div><label>Message</label><textarea name="message" required maxlength="2000"></textarea></div>
+      <div class="hp"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+      <div style="margin-top:12px"><button type="submit">Send message</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="pub-foot">© 2026 S&amp;L Trucking LLC · Pooler, Georgia · USDOT 4227507 · MC-1639360</div>
+</body>
+</html>
