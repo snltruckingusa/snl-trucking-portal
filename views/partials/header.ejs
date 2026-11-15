@@ -15,12 +15,13 @@
   var sec = 'home', subs = [], top = [];
   var topHref = { home: '/', drivers: '/drivers', loads: '/loads', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck' };
   if (user && user.role === 'admin') {
-    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/dvir', 'Maintenance'], ['/more', 'More'] ];
+    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
     else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/drivers/overview', 'Driver Overview'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
     else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
+    else if (p.startsWith('/audit') || p.startsWith('/issued')) { sec = 'audit'; subs = [ ['/audit', 'DQF & Vehicle Audit'], ['/issued', 'Issued Items'] ]; }
     else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
     else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
   } else if (user && user.role === 'driver') {
