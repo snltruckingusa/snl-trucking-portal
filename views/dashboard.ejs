@@ -57,6 +57,20 @@
     <% } %>
   </div>
 
+  <div class="card">
+    <h2>Messages from the website</h2>
+    <% if (typeof siteMessages === 'undefined' || !siteMessages.length) { %><p class="notice">No messages yet.</p><% } else { %>
+    <% siteMessages.forEach(function(m){ %>
+    <div style="border-top:1px solid #eee;padding:10px 0">
+      <b><%= m.name %></b> · <%= m.contact %> · <span class="notice"><%= new Date(m.created_at).toLocaleString() %></span>
+      <% if (m.status === 'new') { %> <span class="badge flag">New</span><% } %>
+      <div style="white-space:pre-wrap;margin-top:4px"><%= m.message %></div>
+      <% if (m.status === 'new') { %><form method="POST" action="/messages/<%= m.id %>/read" style="margin-top:6px"><button class="btn small secondary" type="submit">Mark read</button></form><% } %>
+    </div>
+    <% }) %>
+    <% } %>
+  </div>
+
   <div class="grid">
     <div class="stat"><div class="label">Confirmed revenue this week (<%= weekStartISO %> ~ <%= weekEndISO %>)</div><div class="value"><%= money(summary.revenue) %></div></div>
     <div class="stat"><div class="label">Fuel this week</div><div class="value"><%= money(fuelCost) %></div></div>
