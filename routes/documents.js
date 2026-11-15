@@ -21,7 +21,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const { requireLogin, scopedDriverId, isAdmin, toISODate } = require('../lib/helpers');
 const { SAFETY_TOPICS } = require('../lib/safety');
-const { docChecklist, profileChecklist } = require('../lib/checklists');
+const { docChecklist, profileChecklist, contractChain } = require('../lib/checklists');
 
 const router = express.Router();
 
@@ -61,7 +61,7 @@ router.get('/', requireLogin, async (req, res) => {
   if (scope) {
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
     const docs = (await query(
-      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
       [scope]
     )).rows;
     const pendingChange = (await query(
@@ -85,6 +85,7 @@ router.get('/', requireLogin, async (req, res) => {
       driver, docs, pendingChange, training, companyRecords,
       categories: CATEGORIES, notice, todayISO,
       checklist: docChecklist(docs), profileItems: profileChecklist(driver),
+      chain: contractChain(docs),
     });
   }
 
@@ -97,7 +98,7 @@ router.get('/', requireLogin, async (req, res) => {
     driver = drivers.find((d) => d.id === driverId) || null;
     if (driver) {
       docs = (await query(
-        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
         [driverId]
       )).rows;
     }
@@ -117,6 +118,7 @@ router.get('/', requireLogin, async (req, res) => {
     mode: 'admin', isAdmin: true, scopedDriverId: null,
     drivers, docs, driver, categories: CATEGORIES,
     pendingChanges, pendingDocs, notice, todayISO,
+    chain: contractChain(docs),
   });
 });
 
@@ -224,6 +226,20 @@ router.post('/:id/delete', requireLogin, async (req, res) => {
   }
   await query('DELETE FROM documents WHERE id = $1', [req.params.id]);
   res.redirect('/documents?driver_id=' + r.rows[0].driver_id);
+});
+
+// Admin: flag/unflag a document as a duplicate. A duplicate stays in the
+// folder for the record but never becomes the checklist record for its
+// category (lib/checklists latestByCategory skips it).
+router.post('/:id/duplicate', requireLogin, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).send('Forbidden.');
+  const r = await query(
+    'UPDATE documents SET is_duplicate = NOT is_duplicate WHERE id = $1 RETURNING driver_id, is_duplicate',
+    [req.params.id]
+  );
+  if (!r.rows.length) return res.redirect('/documents');
+  const note = r.rows[0].is_duplicate ? 'Marked as duplicate — it no longer counts as the record.' : 'Duplicate flag removed.';
+  res.redirect('/documents?driver_id=' + r.rows[0].driver_id + '&notice=' + encodeURIComponent(note));
 });
 
 module.exports = router;
