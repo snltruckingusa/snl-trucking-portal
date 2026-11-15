@@ -106,3 +106,5 @@ tr.prev-line { background: #fffbeb; }
   body.drawer-open .sidebar { transform: none; }
 }
 @media print { .sidebar, .drawer-btn, .topnav { display: none !important; } }
+
+.badge.ok { background: #dcf5e3; color: #14532d; }
