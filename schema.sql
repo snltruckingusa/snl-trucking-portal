@@ -248,3 +248,15 @@ CREATE TABLE IF NOT EXISTS safety_acks (
   UNIQUE (driver_id, topic)
 );
 CREATE INDEX IF NOT EXISTS idx_safety_acks_driver ON safety_acks (driver_id);
+
+-- Load-flow redesign (2026-11-14, Eric): staged owner approvals.
+-- A load is created from the dispatch capture (skeleton), the owner
+-- approves the dispatch, the tickets are uploaded (money facts come
+-- from the tickets), the owner approves the tickets, and only then can
+-- the load be confirmed for settlement. empty_container records the
+-- empty this driver returns alongside the job (the dispatch's EMPTY
+-- RETURN leg — container number only).
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS empty_container TEXT;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS dispatch_ok BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS tickets_ok BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE loads SET dispatch_ok = TRUE, tickets_ok = TRUE WHERE status = 'confirmed';
