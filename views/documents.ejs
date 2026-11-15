@@ -47,7 +47,7 @@
       <form class="bi-form" method="POST" action="/documents/upload" enctype="multipart/form-data">
         <input type="hidden" name="category" value="<%= c.key %>">
         <input type="file" name="file" required>
-        <% if (c.expires) { %><input type="date" name="expires_on" required title="Expiry date — required so renewal alerts work"><% } %>
+        <% if (c.expires) { %><label class="notice">Expiry date (optional) <input type="date" name="expires_on" title="Expiry date — it is printed on the card; adding it turns on renewal alerts"></label><% } %>
         <button class="btn small" type="submit"><%= c.doc ? 'Upload new' : 'Upload' %></button>
       </form>
       <% } %>
