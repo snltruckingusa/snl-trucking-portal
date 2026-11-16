@@ -107,7 +107,6 @@ app.use('/mytruck', require('./routes/mytruck'));
 app.use('/mechanic', require('./routes/mechanic'));
 app.use('/audit', require('./routes/audit'));
 app.use('/issued', require('./routes/issued'));
-app.use('/yard', require('./routes/yard'));
 app.use('/cpa', require('./routes/cpa'));
 
 // 404

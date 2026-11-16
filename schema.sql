@@ -435,17 +435,18 @@ CREATE TABLE IF NOT EXISTS issued_items (
 -- delivery may drop the empty at the S&L yard instead of returning it
 -- to the terminal. His job ENDS at the yard drop: the $60 empty-return
 -- amount is not paid on that load (yard_fee = -60, his return leg was
--- not run), the container waits in the yard inventory, and the
--- yard -> terminal move is a SEPARATE dispatched job (whoever runs it
--- claims it as a prepull empty return, +$60, ticket required — the
--- money follows the work, as always). yard_cleared_on is the owner's
--- manual clear for edge cases; the yard list also auto-clears when the
--- load reaches 'returned' or an approved empty-return prepull matches
--- the container.
+-- not run). The yard -> terminal move is a SEPARATE dispatched job:
+-- whoever runs it claims it as a prepull empty return (+$60, ticket
+-- required, "picked up at yard" marked on the claim) — the money
+-- follows the work, as always. There is deliberately NO yard
+-- inventory page: the yard is shared with other companies, so the
+-- portal tracks only the drop/pickup functions, not the yard itself.
+-- Approving a yard pickup closes the drop record (yard_cleared_on).
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS yard_drop BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS yard_drop_on DATE;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS yard_fee NUMERIC(10,2) NOT NULL DEFAULT 0;
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS yard_cleared_on DATE;
+ALTER TABLE prepulls ADD COLUMN IF NOT EXISTS from_yard BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- CPA role: the company's accountant gets his own login, fenced by the
 -- server middleware to read-only accounting sections (settlement,
