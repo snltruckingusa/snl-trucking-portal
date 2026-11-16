@@ -1,0 +1,72 @@
+<%- include('partials/header', { title: 'CPA Overview' }) %>
+<h1>CPA Overview — S&amp;L Trucking LLC</h1>
+<p class="notice">Read-only accounting view. Settlements run Sunday–Saturday and are paid Fridays, one week
+in arrears. Amounts below are computed live from the same records the owner sees.
+Full detail: <a href="/settlement">Settlement</a> · <a href="/invoice">Invoice</a> · <a href="/fuel">Fuel</a>.
+Driver statements open as printable pages (use the browser's Print → Save as PDF to download).</p>
+
+<% weeks.forEach(function(w){ %>
+<div class="card">
+  <h2>Settlement week <%= w.weekStartISO %> → <%= w.weekEndISO %></h2>
+  <table>
+    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th><th class="num">Company net</th><th>Status</th><th></th></tr>
+    <% w.rows.forEach(function(r){ %>
+    <tr>
+      <td><%= r.driver.name %></td>
+      <td class="num"><%= money(r.revenue) %></td>
+      <td class="num"><%= money(r.fuelCost) %></td>
+      <td class="num"><%= money(r.insurance) %></td>
+      <td class="num"><%= money(r.net) %></td>
+      <td class="num"><%= money(r.driverPay) %></td>
+      <td class="num"><%= money(r.companyNet) %></td>
+      <td><%= r.saved && r.saved.status === 'closed' ? 'Closed' : 'Open' %></td>
+      <td><a href="/settlement/statement?driver_id=<%= r.driver.id %>&week=<%= w.weekStartISO %>">Statement</a></td>
+    </tr>
+    <% }); %>
+    <tr>
+      <td><strong>Total</strong></td>
+      <td class="num"><strong><%= money(w.totals.revenue) %></strong></td>
+      <td class="num"><strong><%= money(w.totals.fuelCost) %></strong></td>
+      <td class="num"><strong><%= money(w.totals.insurance) %></strong></td>
+      <td class="num"><strong><%= money(w.totals.net) %></strong></td>
+      <td class="num"><strong><%= money(w.totals.driverPay) %></strong></td>
+      <td class="num"><strong><%= money(w.totals.companyNet) %></strong></td>
+      <td colspan="2">Received from PierLink this week: <%= money(w.receiptsTotal) %></td>
+    </tr>
+  </table>
+</div>
+<% }); %>
+
+<div class="card">
+  <h2>PierLink invoice position</h2>
+  <table>
+    <tr><th class="num">Total claimed</th><th class="num">Total paid</th><th class="num">Outstanding</th><th>Latest invoice week</th><th class="num">Received</th></tr>
+    <tr>
+      <td class="num"><%= money(invoice.claimed) %></td>
+      <td class="num"><%= money(invoice.paid) %></td>
+      <td class="num"><strong><%= money(invoice.outstanding) %></strong></td>
+      <td><%= invoice.latest ? fmtDate(invoice.latest.week_start) : '—' %></td>
+      <td class="num"><%= invoice.latest ? money(invoice.latest.received) : '—' %></td>
+    </tr>
+  </table>
+  <p class="notice">Detail and week-by-week claims: <a href="/invoice">Invoice section</a>.</p>
+</div>
+
+<div class="card">
+  <h2>Fuel — <%= fuelMonth.monthLabel %></h2>
+  <p><%= fuelMonth.gallons.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %> gal ·
+  <%= money(fuelMonth.cost) %> (TCS discounted price). Detail: <a href="/fuel">Fuel section</a>.</p>
+</div>
+
+<div class="card">
+  <h2>Recent receipts (PierLink payments)</h2>
+  <% if (!receipts.length) { %><p>No receipts recorded yet.</p><% } else { %>
+  <table>
+    <tr><th>Date</th><th class="num">Amount</th><th>Reference</th><th>Payer</th></tr>
+    <% receipts.forEach(function(r){ %>
+    <tr><td><%= fmtDate(r.receipt_date) %></td><td class="num"><%= money(r.amount) %></td><td><%= r.reference || '' %></td><td><%= r.payer %></td></tr>
+    <% }); %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>
