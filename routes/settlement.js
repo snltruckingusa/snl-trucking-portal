@@ -350,3 +350,6 @@ router.get('/mpg', requireLogin, async (req, res) => {
 });
 
 module.exports = router;
+// The CPA overview reuses the exact settlement math (no second copy
+// of the money rules to drift out of sync).
+module.exports.computeWeek = computeWeek;

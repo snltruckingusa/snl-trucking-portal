@@ -289,7 +289,7 @@ async function weekClosed(driverId, dateISO) {
 }
 
 const LOG_FIELDS = ['load_date', 'job_type', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
-  'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status'];
+  'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status', 'yard_fee'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
 // Record old -> new for every tracked field that changed. Returns true
@@ -568,6 +568,9 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
     rate: num(req.body.rate), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
     detention: num(req.body.detention), overweight: num(req.body.overweight),
     fsc: num(req.body.fsc), miles: num(req.body.miles),
+    // Only the owner's edit form carries a yard_fee field; any other
+    // edit keeps the recorded fee (a driver edit must never wipe it).
+    yard_fee: req.body.yard_fee !== undefined ? num(req.body.yard_fee) : num(old.yard_fee),
     status: req.body.status === 'confirmed' ? 'confirmed' : 'pending',
   };
   const changed = await logChanges(old.id, req.session.user.username, old, newVals);
@@ -601,7 +604,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
        overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
        dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
        tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END,
-       empty_pin=$20, load_pin=$21, job_type=$22
+       empty_pin=$20, load_pin=$21, job_type=$22, yard_fee=$23
      WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
@@ -610,7 +613,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
      (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
-     newVals.empty_pin, newVals.load_pin, newVals.job_type]
+     newVals.empty_pin, newVals.load_pin, newVals.job_type, newVals.yard_fee]
   );
   res.redirect('/loads');
 });
@@ -639,6 +642,51 @@ router.post('/:id/progress', requireLogin, uploadMem.single('evidence'), async (
     await applyTicketMoney(existing.rows[0], PROGRESS_EVIDENCE[next], saved.extracted, req.session.user.username);
   }
   res.redirect(req.get('Referrer') || '/');
+});
+
+// Yard drop (Eric, 2026-11-16): after delivery the driver may drop the
+// empty at the S&L yard instead of returning it to the terminal. His
+// job ENDS there — the $60 empty-return amount is not paid on this load
+// (yard_fee = -60) — and the container waits in the yard inventory.
+// The yard -> terminal move is a separate dispatched job; whoever runs
+// it claims the +$60 as a prepull empty return (ticket required), so
+// the money follows the work. The owner can undo a mistaken drop.
+const YARD_RETURN_FEE = 60;
+
+router.post('/:id/yard-drop', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
+  if (!existing.rows.length) return res.redirect('/loads');
+  const load = existing.rows[0];
+  if (scope && load.driver_id !== scope) return res.status(403).send('Forbidden.');
+  if (scope && await weekClosed(load.driver_id, fmtDate(load.load_date))) {
+    return res.status(403).send('This week is already settled (closed). Ask the owner to record the yard drop.');
+  }
+  if (load.progress === 'delivered' && !load.yard_drop && load.container_no) {
+    await query(
+      'UPDATE loads SET yard_drop = TRUE, yard_drop_on = CURRENT_DATE, yard_fee = $1 WHERE id = $2',
+      [-YARD_RETURN_FEE, load.id]
+    );
+    await query(
+      'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+      [load.id, req.session.user.username, 'yard_drop', '', `Dropped at yard — $${YARD_RETURN_FEE} empty-return amount not paid on this load`]
+    );
+  }
+  res.redirect(req.get('Referrer') || '/loads');
+});
+
+router.post('/:id/yard-undrop', requireLogin, requireAdmin, async (req, res) => {
+  const existing = await query('SELECT * FROM loads WHERE id = $1', [req.params.id]);
+  if (!existing.rows.length) return res.redirect('/loads');
+  await query(
+    'UPDATE loads SET yard_drop = FALSE, yard_drop_on = NULL, yard_fee = 0, yard_cleared_on = NULL WHERE id = $1',
+    [req.params.id]
+  );
+  await query(
+    'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+    [req.params.id, req.session.user.username, 'yard_drop', 'At yard', 'Yard drop undone by owner']
+  );
+  res.redirect(req.get('Referrer') || '/loads');
 });
 
 // Keep a load's execution progress in step with the evidence on file:

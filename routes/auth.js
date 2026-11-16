@@ -37,6 +37,7 @@ router.post('/login', async (req, res) => {
     };
     if (user.must_change_password) return res.redirect('/change-password');
     if (user.role === 'mechanic') return res.redirect('/mechanic');
+    if (user.role === 'cpa') return res.redirect('/cpa');
     return res.redirect('/');
   } catch (err) {
     console.error('[auth] login error:', err.message);
@@ -93,7 +94,7 @@ router.post('/users', requireLogin, requireAdmin, async (req, res) => {
       throw new Error('Username and a password of at least 8 characters are required.');
     }
     const hash = await bcrypt.hash(password, 10);
-    const safeRole = role === 'driver' || role === 'mechanic' ? role : 'admin';
+    const safeRole = role === 'driver' || role === 'mechanic' || role === 'cpa' ? role : 'admin';
     await query(
       'INSERT INTO users (username, password_hash, role, driver_id) VALUES ($1, $2, $3, $4)',
       [username.trim(), hash, safeRole, safeRole === 'driver' ? (driver_id || null) : null]

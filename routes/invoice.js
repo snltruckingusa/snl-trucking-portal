@@ -23,7 +23,15 @@ const {
 } = require('../lib/helpers');
 
 const router = express.Router();
-router.use(requireLogin, requireAdmin);
+router.use(requireLogin);
+// The CPA reads this section (GET only — his role is fenced again by
+// the server middleware); every write stays owner-only.
+router.use((req, res, next) => {
+  const u = req.session && req.session.user;
+  if (u && u.role === 'admin') return next();
+  if (u && u.role === 'cpa' && req.method === 'GET') return next();
+  return res.status(403).send('Forbidden — admin only.');
+});
 
 const HELP_INS_PER_LOAD = 15;
 const HELP_INS_UNTIL = '2027-09-30';
