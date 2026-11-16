@@ -123,6 +123,7 @@
         </select></div>
         <div><label>Container #</label><input name="container_no" required placeholder="e.g. ZCSU6846803"></div>
         <div><label>Terminal ticket photo</label><input type="file" name="photo" accept="image/*" required></div>
+        <div><label><input type="checkbox" name="from_yard" value="1"> Picked up at our yard</label><span class="notice">Empty returns only — check this when the empty was waiting at the S&amp;L yard and you took it to the terminal.</span></div>
       </div>
       <button class="btn" type="submit">Submit for approval</button>
     </form>
@@ -132,7 +133,7 @@
       <% myPrepulls.forEach(function(p){ %>
       <tr>
         <td><%= fmtDate(p.work_date) %></td>
-        <td><%= p.kind === 'load_out' ? 'Load out' : 'Empty return' %></td>
+        <td><%= p.kind === 'load_out' ? 'Load out' : 'Empty return' %><% if (p.from_yard) { %> · from yard<% } %></td>
         <td><%= p.container_no %></td>
         <td><%= money(p.amount) %></td>
         <td><%= p.status === 'approved' ? '✅ Approved' : (p.status === 'rejected' ? 'Rejected' : 'Pending') %></td>
@@ -253,9 +254,9 @@
     <h3>Prepull approvals (<%= pendingPrepulls.length %>)</h3>
     <% pendingPrepulls.forEach(function(p){ %>
     <form method="post" action="/loads/prepulls/<%= p.id %>/approve" style="border-top:1px solid #e5e7eb;padding:8px 0">
-      <div><b><%= p.driver_name %></b> — <%= fmtDate(p.work_date) %> · <%= p.kind === 'load_out' ? 'Pulled a load out' : 'Returned an empty' %> · Container <b><%= p.container_no %></b> · <b><%= money(p.amount) %></b> · <a href="/loads/prepulls/<%= p.id %>/photo" target="_blank">Ticket photo</a></div>
+      <div><b><%= p.driver_name %></b> — <%= fmtDate(p.work_date) %> · <%= p.kind === 'load_out' ? 'Pulled a load out' : 'Returned an empty' %><% if (p.from_yard) { %> · <b>picked up at our yard</b><% } %> · Container <b><%= p.container_no %></b> · <b><%= money(p.amount) %></b> · <a href="/loads/prepulls/<%= p.id %>/photo" target="_blank">Ticket photo</a></div>
       <% if (p.load_id) { %>
-      <div class="notice">Matches <%= p.match_driver_name %>'s <%= fmtDate(p.match_date) %> <%= p.match_delivery || '' %> load (its prepull is now <%= money(p.match_prepull) %>). <label><input type="checkbox" name="apply_deduction" value="1" checked> Also apply −<%= money(p.amount) %> to that load</label></div>
+      <div class="notice">Matches <%= p.match_driver_name %>'s <%= fmtDate(p.match_date) %> <%= p.match_delivery || '' %> load (its prepull is now <%= money(p.match_prepull) %>). <% if (p.from_yard) { %>That load already carries the −$60 yard fee — leave this box <b>unchecked</b>. <% } %><label><input type="checkbox" name="apply_deduction" value="1" <%= p.from_yard ? '' : 'checked' %>> Also apply −<%= money(p.amount) %> to that load</label></div>
       <% } else { %>
       <div class="notice">No matching load found for this container — approving pays the credit only.</div>
       <% } %>
@@ -287,13 +288,20 @@
         <% if (l.detention_status === 'pending') { %><br><span class="badge warn">Detention pending review <%= money(l.detention) %></span><% } %>
       </td>
       <td><%= l.pickup || '' %> → <%= l.delivery || '' %><% if (l.notes) { %><br><span class="notice"><%= l.notes %></span><% } %></td>
-      <td class="num"><%= money(loadTotal(l)) %></td>
+      <td class="num"><%= money(loadTotal(l)) %><% if (Number(l.yard_fee)) { %><br><span class="notice">incl. yard fee <%= money(l.yard_fee) %></span><% } %></td>
       <td class="num"><%= l.miles %><% var lane = laneFor(l.delivery); if (lane && lane.gallons) { %><br><span class="notice">Std <%= lane.gallons %> gal</span><% } %></td>
       <td><span class="badge <%= l.status %>"><%= l.status === 'confirmed' ? 'Confirmed' : 'Pending' %></span><% if (l.status === 'pending') { %><br><span class="notice">Dispatch <%= l.dispatch_ok ? '✓' : '—' %> · Tickets <%= l.tickets_ok ? '✓' : '—' %></span><% } %></td>
       <td>
         <span class="badge progress"><%= PROGRESS_LABELS[l.progress] || l.progress %></span>
+        <% if (l.yard_drop) { %><br><span class="badge warn">At yard<%= l.yard_drop_on ? ' since ' + fmtDate(l.yard_drop_on) : '' %></span><% } %>
         <% if (l.progress !== 'returned' && (isAdmin || scopedDriverId === l.driver_id)) { %>
         <form class="inline" method="POST" action="/loads/<%= l.id %>/progress"><button class="btn small secondary" type="submit">Next step</button></form>
+        <% } %>
+        <% if (l.progress === 'delivered' && !l.yard_drop && l.container_no && (isAdmin || scopedDriverId === l.driver_id)) { %>
+        <form class="inline" method="POST" action="/loads/<%= l.id %>/yard-drop"><button class="btn small secondary" type="submit">Drop at yard</button></form>
+        <% } %>
+        <% if (isAdmin && l.yard_drop) { %>
+        <form class="inline" method="POST" action="/loads/<%= l.id %>/yard-undrop"><button class="btn small secondary" type="submit">Undo yard drop</button></form>
         <% } %>
       </td>
       <td>
@@ -336,6 +344,7 @@
               <div class="gb-title">3 — Amounts</div>
               <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="<%= l.rate %>"></div>
               <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="<%= l.prepull %>"></div>
+              <div><label>Yard fee ($)</label><input name="yard_fee" type="number" step="0.01" value="<%= l.yard_fee || 0 %>"></div>
               <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="<%= l.reefer %>"></div>
               <div><label>Detention ($)</label><input name="detention" type="number" step="0.01" value="<%= l.detention %>"></div>
               <div><label>Overweight ($)</label><input name="overweight" type="number" step="0.01" value="<%= l.overweight %>"></div>
