@@ -13,7 +13,7 @@
   // route has to change. (Frame redesign, Nov 15, 2026.)
   var p = (typeof path !== 'undefined' && path) ? path : '/';
   var sec = 'home', subs = [], top = [];
-  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck' };
+  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck', cpa: '/cpa', fuel: '/fuel' };
   if (user && user.role === 'admin') {
     top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
@@ -32,6 +32,14 @@
     else if (p.startsWith('/documents')) { sec = 'myfile'; subs = [ ['/documents', 'My File'] ]; }
     else if (p.startsWith('/mytruck')) { sec = 'mytruck'; subs = [ ['/mytruck', 'My Truck'] ]; }
     else { sec = 'more'; subs = [ ['/more', 'More'], ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
+  } else if (user && user.role === 'cpa') {
+    // CPA frame: accounting sections only, all read-only (the server
+    // middleware fences the role to GETs on these paths).
+    top = [ ['/cpa', 'CPA Home'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/fuel', 'Fuel'] ];
+    if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
+    else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
+    else if (p.startsWith('/fuel')) { sec = 'fuel'; subs = [ ['/fuel', 'Fuel'] ]; }
+    else { sec = 'cpa'; subs = [ ['/cpa', 'Overview'] ]; }
   }
   // Longest matching sidebar href is the active one.
   var activeSub = '';
@@ -45,7 +53,7 @@
   <% if (user) { %>
   <div class="who">
     <%= user.username %>
-    <% if (user.role === 'admin') { %>(Admin)<% } else if (user.role === 'mechanic') { %>(Mechanic)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
+    <% if (user.role === 'admin') { %>(Admin)<% } else if (user.role === 'mechanic') { %>(Mechanic)<% } else if (user.role === 'cpa') { %>(CPA)<% } else { %>(<%= user.driver_name || 'Driver' %><% if (user.truck_number) { %> #<%= user.truck_number %><% } %>)<% } %>
     · <a class="who-link" href="/change-password">Password</a>
     · <a class="who-link" href="/logout">Logout</a>
   </div>
