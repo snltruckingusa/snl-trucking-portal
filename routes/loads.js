@@ -915,12 +915,16 @@ router.post('/prepulls', requireLogin, uploadMem.single('photo'), async (req, re
   const m = await query(
     'SELECT id FROM loads WHERE container_no = $1 AND driver_id <> $2 ORDER BY load_date DESC LIMIT 1',
     [container, driver_id]);
+  // Yard pickup (Eric, 2026-11-16): an empty return that started at
+  // the S&L yard is marked as such — approving it closes the yard-drop
+  // record on the load that left the container there.
+  const fromYard = kind === 'empty_return' && req.body.from_yard === '1';
   const { text } = await ocrBuffer(req.file.buffer);
   await query(
-    `INSERT INTO prepulls (driver_id, work_date, kind, container_no, amount, load_id, photo_data, photo_mime, ocr_text, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO prepulls (driver_id, work_date, kind, container_no, amount, load_id, photo_data, photo_mime, ocr_text, created_by, from_yard)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [driver_id, workDate, kind, container, amount, m.rows.length ? m.rows[0].id : null,
-     req.file.buffer, req.file.mimetype || 'image/jpeg', text || null, req.session.user.username]);
+     req.file.buffer, req.file.mimetype || 'image/jpeg', text || null, req.session.user.username, fromYard]);
   res.redirect('/loads?day=' + workDate + '&notice=' + encodeURIComponent('Prepull submitted — it pays once the owner approves it.'));
 });
 
@@ -937,6 +941,19 @@ router.post('/prepulls/:id/approve', requireLogin, requireAdmin, async (req, res
   if (!r.rows.length) return res.redirect('/loads');
   const p = r.rows[0];
   await query("UPDATE prepulls SET status = 'approved', decided_at = now() WHERE id = $1", [p.id]);
+  // Yard pickup closes the drop: an approved empty return whose
+  // container was left at the yard ends that load's yard record. (The
+  // −$60 yard fee on the drop load already stands — the deduction box
+  // below is for the ordinary matched-load case, and the owner simply
+  // leaves it unchecked for yard returns.)
+  if (p.kind === 'empty_return') {
+    await query(
+      `UPDATE loads SET yard_cleared_on = $1
+       WHERE yard_drop = TRUE AND yard_cleared_on IS NULL
+         AND UPPER(container_no) = $2 AND yard_drop_on <= $1`,
+      [p.work_date, String(p.container_no).toUpperCase()]
+    );
+  }
   // One approval books BOTH sides: the worker's credit (via settlement)
   // and — when the owner leaves the box checked — the deduction on the
   // matched load, logged like every other load change.
