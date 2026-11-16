@@ -71,6 +71,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// CPA accounts (the company's accountant) are fenced to the read-only
+// accounting sections: his overview, Settlement, Invoice and Fuel —
+// GET requests only, so no write of any kind can pass, and driver
+// files / personal documents stay out of reach entirely.
+app.use((req, res, next) => {
+  const u = req.session && req.session.user;
+  if (u && u.role === 'cpa') {
+    const authPage = req.path === '/login' || req.path === '/logout' || req.path === '/change-password';
+    const readSection = req.method === 'GET' && (
+      req.path === '/cpa' || req.path.startsWith('/cpa/')
+      || req.path === '/settlement' || req.path.startsWith('/settlement/')
+      || req.path === '/invoice' || req.path.startsWith('/invoice/')
+      || req.path === '/fuel' || req.path.startsWith('/fuel/'));
+    if (!authPage && !readSection) return res.redirect('/cpa');
+  }
+  next();
+});
+
 // Health check (Render uses this).
 app.get('/health', (req, res) => res.status(200).json({ ok: true }));
 
@@ -89,6 +107,8 @@ app.use('/mytruck', require('./routes/mytruck'));
 app.use('/mechanic', require('./routes/mechanic'));
 app.use('/audit', require('./routes/audit'));
 app.use('/issued', require('./routes/issued'));
+app.use('/yard', require('./routes/yard'));
+app.use('/cpa', require('./routes/cpa'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
