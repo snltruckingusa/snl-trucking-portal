@@ -1,4 +1,5 @@
 <%- include('partials/header', { title: 'Dashboard' }) %>
+<% var DOC_LABELS = { cdl: 'CDL', medical_card: 'Medical Card', twic: 'TWIC Card', mvr: 'MVR', contract: 'Contract', w9: 'W-9', drug_test: 'Drug Test Result', clearinghouse: 'Clearinghouse Query', road_test: 'Road Test Record', application: 'Application', annual_review: 'Annual Review', clearinghouse_consent: 'Clearinghouse Consent', safety_history: 'Safety Performance History', registration: 'Registration', other: 'Other' }; %>
 <% if (isAdmin) { %><h1>Dashboard</h1><% } %>
 
 <% if (isAdmin) { %>
@@ -33,7 +34,7 @@
     <% if (!expiringDocs.length) { %><p class="notice">None.</p><% } else { %>
     <ul class="check-list">
       <% expiringDocs.forEach(function(doc){ %>
-      <li><%= doc.driver_name %> — <%= doc.original_name %> <span class="badge warn">Expires <%= fmtDate(doc.expires_on) %></span></li>
+      <li><%= doc.driver_name %> — <b><%= DOC_LABELS[doc.category] || 'Document' %></b> · <%= doc.original_name %> <span class="badge warn">Expires <%= fmtDate(doc.expires_on) %></span></li>
       <% }) %>
     </ul>
     <% } %>
@@ -143,7 +144,7 @@
     </ul>
     <% } %>
     <% expiringDocs.forEach(function(doc){ attnAny = true; var dLeft = Math.round((new Date(fmtDate(doc.expires_on)) - new Date(today)) / 86400000); %>
-    <p>📁 <a href="/documents"><%= doc.original_name %></a> — expires <%= fmtDate(doc.expires_on) %> (<%= dLeft < 0 ? 'already expired' : (dLeft === 0 ? 'today' : 'in ' + dLeft + ' days') %>)</p>
+    <p>📁 <a href="/documents"><%= DOC_LABELS[doc.category] || 'Document' %> · <%= doc.original_name %></a> — expires <%= fmtDate(doc.expires_on) %> (<%= dLeft < 0 ? 'already expired' : (dLeft === 0 ? 'today' : 'in ' + dLeft + ' days') %>)</p>
     <% }) %>
     <% if (pendingCount > 0) { attnAny = true; %><p>🕐 <%= pendingCount %> load<%= pendingCount > 1 ? 's' : '' %> waiting for owner review.</p><% } %>
     <% if (!attnAny) { %><p>✅ All caught up — nothing needs your attention.</p><% } %>
