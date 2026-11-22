@@ -107,12 +107,14 @@
   <tr><td>Net</td><td class="num"><%= money(r.net) %></td></tr>
   <tr><td>Your split</td><td class="num"><%= r.splitPct %>%</td></tr>
   <% if (r.weekendApplied) { %><tr><td>Weekend rule</td><td class="num">70% applied (weekend net <%= money(r.weekend.weekendNet) %>)</td></tr><% } %>
+    <% if (r.downtime) { %><tr><td>Downtime pay (added in full)</td><td class="num">+ <%= money(r.downtime) %></td></tr><% } %>
   <tr class="total"><td>Driver pay</td><td class="num"><%= money(r.driverPay) %></td></tr>
 </table>
 
 <% if (r.fuelStd) { %>
 <p class="note">Fuel standard for your lanes: <%= r.fuelStd.stdGallons %> gal. You used <%= r.fuelStd.excessGal >= 0 ? r.fuelStd.excessGal + ' gal over' : Math.abs(r.fuelStd.excessGal) + ' gal under' %> the standard<% if (r.fuelStd.excessGal >= 0) { %> (<%= money(r.fuelStd.excessCost) %>; your share <%= money(r.fuelStd.driverShare) %>)<% } else { %> (saved <%= money(-r.fuelStd.excessCost) %>)<% } %>. Miles: <%= r.miles %> · MPG: <%= r.mpg === null ? '—' : r.mpg %><% if (r.mpg2w !== null && r.mpg2w !== undefined) { %> · 2-week avg MPG: <%= r.mpg2w %><% } %>.</p>
 <% } %>
+<% if (r.downtimeRows && r.downtimeRows.length) { %><p class="note">Downtime pay: <% r.downtimeRows.forEach(function(e){ %><%= fmtDate(e.pay_date) %> — <%= money(e.amount) %><% if (e.reason) { %> (<%= e.reason %>)<% } %>; <% }); %></p><% } %>
 <p class="note">This statement covers confirmed loads only. Settlements are paid 1 week in arrears. Questions: contact the owner.</p>
 </body>
 </html>
