@@ -1,0 +1,37 @@
+<%- include('partials/header', { title: 'Business Documents' }) %>
+<h1>Business Documents</h1>
+<p class="notice">Bank and card statements and other company financial documents. The CPA can view and download these read-only.</p>
+<% if (error) { %><p class="error"><%= error %></p><% } %>
+<% if (notice) { %><p class="notice"><%= notice %></p><% } %>
+<% if (isAdmin) { %>
+<div class="card">
+  <h2>Upload document</h2>
+  <form method="POST" action="/bizdocs/upload" enctype="multipart/form-data">
+    <div class="form-row">
+      <div><label>Title</label><input name="title" placeholder="e.g. Chase 5180 — November 2026"></div>
+      <div><label>Category</label><select name="category"><% categories.forEach(function(c){ %><option><%= c %></option><% }); %></select></div>
+      <div><label>Period</label><input name="period_label" placeholder="e.g. 2026-11"></div>
+      <div><label>File</label><input type="file" name="file" required></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Upload</button></div>
+  </form>
+</div>
+<% } %>
+<div class="card">
+  <h2>Documents (<%= docs.length %>)</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Title</th><th>Category</th><th>Period</th><th>File</th><th>Uploaded</th><th></th></tr>
+    <% docs.forEach(function(d){ %>
+    <tr>
+      <td><%= d.title %></td>
+      <td><%= d.category %></td>
+      <td><%= d.period_label || '' %></td>
+      <td><a href="/bizdocs/<%= d.id %>/file" target="_blank"><%= d.original_name %></a></td>
+      <td><%= fmtDate(d.uploaded_at) %></td>
+      <td><% if (isAdmin) { %><form method="POST" action="/bizdocs/<%= d.id %>/delete" onsubmit="return confirm('Delete this document?')"><button type="submit">Delete</button></form><% } %></td>
+    </tr>
+    <% }); %>
+    <% if (!docs.length) { %><tr><td colspan="6">No documents yet.</td></tr><% } %>
+  </table></div>
+</div>
+<%- include('partials/footer') %>
