@@ -84,7 +84,8 @@ app.use((req, res, next) => {
       || req.path === '/settlement' || req.path.startsWith('/settlement/')
       || req.path === '/invoice' || req.path.startsWith('/invoice/')
       || req.path === '/fuel' || req.path.startsWith('/fuel/')
-      || req.path === '/bizdocs' || req.path.startsWith('/bizdocs/'));
+      || req.path === '/bizdocs' || req.path.startsWith('/bizdocs/')
+    || req.path === '/ledger' || req.path.startsWith('/ledger/'));
     if (!authPage && !readSection) return res.redirect('/cpa');
   }
   next();
@@ -110,6 +111,7 @@ app.use('/audit', require('./routes/audit'));
 app.use('/issued', require('./routes/issued'));
 app.use('/cpa', require('./routes/cpa'));
 app.use('/bizdocs', require('./routes/bizdocs'));
+app.use('/ledger', require('./routes/ledger'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
