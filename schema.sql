@@ -481,3 +481,20 @@ CREATE TABLE IF NOT EXISTS business_documents (
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+-- Ledger: categorized bank/card transactions for the CPA view.
+-- Amounts: income positive, money out negative. basket separates
+-- income / expense / transfer / personal / capital / review so card
+-- payments (transfers) never double-count as expenses.
+CREATE TABLE IF NOT EXISTS ledger_transactions (
+  id SERIAL PRIMARY KEY,
+  txn_date DATE NOT NULL,
+  account TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  amount NUMERIC(12,2) NOT NULL,
+  eric_label TEXT NOT NULL DEFAULT '',
+  basket TEXT NOT NULL DEFAULT 'review',
+  category TEXT NOT NULL DEFAULT 'Needs Review',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ledger_transactions_date_idx ON ledger_transactions (txn_date);
