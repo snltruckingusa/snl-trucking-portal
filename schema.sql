@@ -481,16 +481,3 @@ CREATE TABLE IF NOT EXISTS business_documents (
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-
-
-
-
-
-
-
-
-
-
-
-
-
