@@ -371,7 +371,7 @@ ALTER TABLE mechanic_logs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 -- the repair-entry page. The shop name is required on every entry —
 -- that, not the login, is the accountability.
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','driver','mechanic'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','driver','mechanic','cpa'));
 
 -- Driver Overview profile fields (2026-11-15): date of birth, email and
 -- the license (CDL) number + issuing state live ON the driver record —
