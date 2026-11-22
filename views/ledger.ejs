@@ -1,0 +1,125 @@
+<% const framed = false; %>
+<%- include('partials/header', { title: 'Ledger', framed }) %>
+<style>
+  .cards { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
+  .card { border:1px solid #ddd; border-radius:8px; padding:10px 14px; min-width:140px; }
+  .card .k { font-size:12px; color:#666; }
+  .card .v { font-size:20px; font-weight:700; }
+  .pos { color:#2e7d32; } .neg { color:#c62828; }
+  table.led { border-collapse:collapse; width:100%; margin:8px 0 20px; }
+  table.led th, table.led td { border-bottom:1px solid #e5e5e5; padding:5px 8px; text-align:left; font-size:14px; }
+  table.led td.num, table.led th.num { text-align:right; white-space:nowrap; }
+  .legend-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  .filters a { margin-right:10px; }
+  .muted { color:#666; font-size:13px; }
+</style>
+
+<h1>Ledger — Income &amp; Expenses</h1>
+<p>Every bank and card transaction, categorized the way a CPA works.
+Card payments are <strong>transfers</strong>, not expenses (counting them twice is the classic mistake),
+and owner/personal items are kept apart from business expenses.</p>
+
+<% if (notice) { %><p style="background:#e8f5e9;border:1px solid #a5d6a7;padding:8px 12px;border-radius:6px;"><%= notice %></p><% } %>
+<% if (error) { %><p style="background:#fdecea;border:1px solid #ef9a9a;padding:8px 12px;border-radius:6px;"><%= error %></p><% } %>
+
+<p>Year:
+  <% years.forEach((y) => { %>
+    <% if (y === year) { %><strong><%= y %></strong><% } else { %><a href="/ledger?year=<%= y %>"><%= y %></a><% } %> ·
+  <% }) %>
+</p>
+
+<div class="cards">
+  <div class="card"><div class="k">Income</div><div class="v pos"><%= money(basketTotals.income.total) %></div><div class="muted"><%= basketTotals.income.n %> transactions</div></div>
+  <div class="card"><div class="k">Business expenses</div><div class="v neg"><%= money(basketTotals.expense.total) %></div><div class="muted"><%= basketTotals.expense.n %> transactions</div></div>
+  <div class="card"><div class="k">Net (income − expenses)</div><div class="v <%= (basketTotals.income.total + basketTotals.expense.total) >= 0 ? 'pos' : 'neg' %>"><%= money(basketTotals.income.total + basketTotals.expense.total) %></div></div>
+  <div class="card"><div class="k">Owner / personal</div><div class="v"><%= money(basketTotals.personal.total) %></div><div class="muted">kept separate</div></div>
+  <div class="card"><div class="k">Transfers</div><div class="v"><%= money(basketTotals.transfer.total) %></div><div class="muted">card payments — not expenses</div></div>
+  <div class="card"><div class="k">Needs review</div><div class="v"><%= basketTotals.review.n %></div><div class="muted"><a href="/ledger?basket=review">review them</a></div></div>
+</div>
+
+<h2>Monthly income vs expenses — <%= year %></h2>
+<% const chartH = 170, baseY = 190, groupW = 49, chartW = 12 * groupW + 16; %>
+<svg viewBox="0 0 <%= chartW %> 235" style="width:100%;max-width:720px;background:#fafafa;border:1px solid #eee;border-radius:8px;" role="img" aria-label="Monthly income and expenses bar chart">
+  <line x1="8" y1="<%= baseY %>" x2="<%= chartW - 8 %>" y2="<%= baseY %>" stroke="#bbb"/>
+  <% months.forEach((mo, i) => { const gx = 10 + i * groupW; const ih = Math.round(mo.income / maxMonthly * chartH); const eh = Math.round(Math.abs(mo.expense) / maxMonthly * chartH); %>
+    <rect x="<%= gx %>" y="<%= baseY - ih %>" width="15" height="<%= ih %>" fill="#2e7d32"><title>Income <%= mo.key %>: <%= money(mo.income) %></title></rect>
+    <rect x="<%= gx + 17 %>" y="<%= baseY - eh %>" width="15" height="<%= eh %>" fill="#c62828"><title>Expenses <%= mo.key %>: <%= money(mo.expense) %></title></rect>
+    <text x="<%= gx + 8 %>" y="<%= baseY + 16 %>" font-size="10" fill="#555"><%= mo.m %></text>
+    <text x="<%= gx + 16 %>" y="<%= baseY + 30 %>" font-size="9" text-anchor="middle" fill="<%= mo.net >= 0 ? '#2e7d32' : '#c62828' %>"><%= Math.round(mo.net / 1000) %>k</text>
+  <% }) %>
+</svg>
+<p class="muted">Green = income, red = expenses; the small number under each month is the net, in thousands.</p>
+
+<h2>Where the money went — expense categories <%= year %></h2>
+<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;">
+  <svg viewBox="0 0 200 200" style="width:220px;height:220px;" role="img" aria-label="Expense categories donut chart">
+    <g transform="rotate(-90 100 100)">
+      <% segments.forEach((s) => { %>
+        <circle cx="100" cy="100" r="70" fill="none" stroke="<%= s.color %>" stroke-width="34"
+                stroke-dasharray="<%= s.dash.toFixed(2) %> 439.82" stroke-dashoffset="<%= s.offset.toFixed(2) %>">
+          <title><%= s.label %>: <%= money(s.value) %> (<%= s.pct.toFixed(1) %>%)</title>
+        </circle>
+      <% }) %>
+    </g>
+    <text x="100" y="96" text-anchor="middle" font-size="13" fill="#555">Expenses</text>
+    <text x="100" y="114" text-anchor="middle" font-size="14" font-weight="700"><%= money(-expenseTotalAbs) %></text>
+  </svg>
+  <table class="led" style="flex:1;min-width:280px;">
+    <thead><tr><th>Category</th><th class="num">Amount</th><th class="num">Share</th><th class="num">Count</th></tr></thead>
+    <tbody>
+      <% catTotals.forEach((c, i) => { %>
+        <tr>
+          <td><span class="legend-dot" style="background:<%= segments[i] ? segments[i].color : '#999' %>"></span><a href="/ledger?category=<%= encodeURIComponent(c.category) %>"><%= c.category %></a></td>
+          <td class="num"><%= money(c.total) %></td>
+          <td class="num"><%= (c.abs / expenseTotalAbs * 100).toFixed(1) %>%</td>
+          <td class="num"><%= c.n %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<% if (isAdmin) { %>
+<h2>Import categorized CSV</h2>
+<form method="post" action="/ledger/import" enctype="multipart/form-data" style="border:1px solid #ddd;border-radius:8px;padding:12px;max-width:560px;">
+  <p class="muted" style="margin-top:0;">Columns: date (YYYY-MM-DD), account, description, amount, eric_label, basket, cpa_category. Exact duplicates are skipped, so re-importing a file is safe.</p>
+  <input type="file" name="file" accept=".csv" required>
+  <button type="submit">Import</button>
+</form>
+<% } %>
+
+<h2>Transactions</h2>
+<p class="filters">
+  <a href="/ledger?year=<%= year %>">All (<%= year %>)</a>
+  <% Object.keys(basketLabels).forEach((b) => { %><a href="/ledger?basket=<%= b %>"><%= basketLabels[b] %></a><% }) %>
+  <% if (filters.basket || filters.category || filters.month) { %><span class="muted">— filtered<%= filters.month ? ' to ' + filters.month : '' %><%= filters.category ? ' to ' + filters.category : '' %>, newest first, up to 300 rows.</span><% } %>
+</p>
+<table class="led">
+  <thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Amount</th><th>Label</th><th>Category</th><% if (isAdmin) { %><th>Set category</th><% } %></tr></thead>
+  <tbody>
+    <% txns.forEach((t) => { %>
+      <tr>
+        <td style="white-space:nowrap;"><%= fmtDate(t.txn_date) %></td>
+        <td><%= t.account %></td>
+        <td><%= t.description %></td>
+        <td class="num <%= t.amount < 0 ? 'neg' : 'pos' %>"><%= money(t.amount) %></td>
+        <td><%= t.eric_label %></td>
+        <td><%= t.category %><br><span class="muted"><%= basketLabels[t.basket] || t.basket %></span></td>
+        <% if (isAdmin) { %>
+        <td>
+          <form method="post" action="/ledger/<%= t.id %>/categorize" style="display:flex;gap:4px;">
+            <input type="hidden" name="back" value="/ledger?basket=<%= t.basket %>">
+            <select name="preset">
+              <% presets.forEach((p) => { %><option value="<%= p %>" <%= (t.basket + '|' + t.category) === p ? 'selected' : '' %>><%= p.split('|')[1] %></option><% }) %>
+            </select>
+            <button type="submit">Save</button>
+          </form>
+        </td>
+        <% } %>
+      </tr>
+    <% }) %>
+    <% if (!txns.length) { %><tr><td colspan="7" class="muted">No transactions match.</td></tr><% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer', { framed }) %>
