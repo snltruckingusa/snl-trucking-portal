@@ -8,7 +8,7 @@
 const express = require('express');
 const multer = require('multer');
 const db = require('../db');
-const { requireAuth, requireAdmin } = require('../lib/auth');
+const { requireLogin, requireAdmin } = require('../lib/helpers');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -57,7 +57,7 @@ function parseCsv(text) {
   return rows;
 }
 
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireLogin, async (req, res, next) => {
   try {
     const yearsRes = await db.query(
       `SELECT DISTINCT date_part('year', txn_date)::int AS y FROM ledger_transactions ORDER BY 1 DESC`);
