@@ -453,3 +453,15 @@ ALTER TABLE prepulls ADD COLUMN IF NOT EXISTS from_yard BOOLEAN NOT NULL DEFAULT
 -- invoice, fuel + his overview page). He never sees driver files.
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','driver','mechanic','cpa'));
+-- Downtime / other pay (Eric, 2026-11-21): when a truck is down for
+-- repairs the driver still gets paid (e.g. $200/day). This is NOT load
+-- revenue: it is added to the driver's week pay in full, after the
+-- split, with the reason recorded so the payment explains itself.
+CREATE TABLE IF NOT EXISTS downtime_pay (
+  id SERIAL PRIMARY KEY,
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  pay_date DATE NOT NULL,
+  amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
