@@ -69,6 +69,15 @@ async function computeWeek(weekStartISO, driverFilter) {
     );
     const prepullCredit = parseFloat(ppRes.rows[0].total);
     revenue += prepullCredit;
+    // Downtime / other pay (Eric, 2026-11-21): paid in full on top of
+    // the split pay — a breakdown is not the driver's fault, so it is
+    // never split and never reduced by fuel or insurance.
+    const dtRes = await query(
+      `SELECT * FROM downtime_pay WHERE driver_id = $1 AND pay_date >= $2 AND pay_date <= $3 ORDER BY pay_date, id`,
+      [d.id, wsISO, weISO]
+    );
+    const downtimeRows = dtRes.rows.map(r => ({ ...r, amount: parseFloat(r.amount) }));
+    const downtimeTotal = Math.round(downtimeRows.reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
     const miles = parseFloat(loads.rows[0].miles);
     const daysWorked = parseInt(loads.rows[0].days_worked, 10);
     const fuelCost = parseFloat(fuel.rows[0].fuel_cost);
@@ -152,11 +161,12 @@ async function computeWeek(weekStartISO, driverFilter) {
     const savedRow = saved.rows[0] || null;
     const weekendApplied = !!(savedRow && savedRow.weekend_applied && weekend.conditionMet && weekend.hasWeekend);
     if (weekendApplied) driverPay = weekend.adjustedPay;
+    if (downtimeTotal) driverPay = Math.round((driverPay + downtimeTotal) * 100) / 100;
     const companyNet = Math.round((net - driverPay) * 100) / 100;
     rows.push({
       driver: d, revenue, prepullCredit, fuelCost, insurance, net, driverPay, companyNet,
       miles, gallons, mpg, mpg2w, daysWorked,
-      splitPct, fuelStd,
+      splitPct, fuelStd, downtime: downtimeTotal, downtimeRows,
       loads: loadRows.rows,
       mpgFlag: mpg !== null && mpg < 6.0,
       saved: savedRow,
@@ -171,7 +181,8 @@ async function computeWeek(weekStartISO, driverFilter) {
     net: acc.net + r.net,
     driverPay: acc.driverPay + r.driverPay,
     companyNet: acc.companyNet + r.companyNet,
-  }), { revenue: 0, fuelCost: 0, insurance: 0, net: 0, driverPay: 0, companyNet: 0 });
+    downtime: acc.downtime + (r.downtime || 0),
+  }), { revenue: 0, fuelCost: 0, insurance: 0, net: 0, driverPay: 0, companyNet: 0, downtime: 0 });
 
   const receipts = await query(
     'SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM receipts WHERE receipt_date >= $1 AND receipt_date <= $2',
@@ -327,6 +338,26 @@ router.get('/monthly', requireLogin, async (req, res) => {
     driver: drv.rows[0], monthLabel: first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
     weeks, totals, generatedOn: toISODate(new Date()),
   });
+});
+
+// Downtime / other pay entry (admin only). computeWeek picks entries
+// up automatically, so the week's settlement and statements show them.
+router.post('/downtime', requireLogin, requireAdmin, async (req, res) => {
+  const driverId = parseInt(req.body.driver_id, 10);
+  const payDate = String(req.body.pay_date || '').slice(0, 10);
+  const amount = num(req.body.amount);
+  const reason = String(req.body.reason || '').trim() || null;
+  if (!driverId || !/^\d{4}-\d{2}-\d{2}$/.test(payDate) || !amount) return res.redirect('/settlement');
+  await query('INSERT INTO downtime_pay (driver_id, pay_date, amount, reason) VALUES ($1,$2,$3,$4)',
+    [driverId, payDate, amount, reason]);
+  res.redirect('/settlement?week=' + toISODate(weekStart(new Date(payDate + 'T00:00:00'))));
+});
+
+router.post('/downtime/:id/delete', requireLogin, requireAdmin, async (req, res) => {
+  const row = (await query('SELECT pay_date FROM downtime_pay WHERE id = $1', [req.params.id])).rows[0];
+  await query('DELETE FROM downtime_pay WHERE id = $1', [req.params.id]);
+  const back = row ? '/settlement?week=' + toISODate(weekStart(new Date(row.pay_date))) : '/settlement';
+  res.redirect(back);
 });
 
 // MPG history (per driver, per week).
