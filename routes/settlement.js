@@ -72,11 +72,16 @@ async function computeWeek(weekStartISO, driverFilter) {
     // Downtime / other pay (Eric, 2026-11-21): paid in full on top of
     // the split pay — a breakdown is not the driver's fault, so it is
     // never split and never reduced by fuel or insurance.
-    const dtRes = await query(
-      `SELECT * FROM downtime_pay WHERE driver_id = $1 AND pay_date >= $2 AND pay_date <= $3 ORDER BY pay_date, id`,
-      [d.id, wsISO, weISO]
-    );
-    const downtimeRows = dtRes.rows.map(r => ({ ...r, amount: parseFloat(r.amount) }));
+    let downtimeRows = [];
+    try {
+      const dtRes = await query(
+        `SELECT * FROM downtime_pay WHERE driver_id = $1 AND pay_date >= $2 AND pay_date <= $3 ORDER BY pay_date, id`,
+        [d.id, wsISO, weISO]
+      );
+      downtimeRows = dtRes.rows.map(r => ({ ...r, amount: parseFloat(r.amount) }));
+    } catch (e) {
+      console.error('downtime_pay query failed (treated as 0):', e.message);
+    }
     const downtimeTotal = Math.round(downtimeRows.reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
     const miles = parseFloat(loads.rows[0].miles);
     const daysWorked = parseInt(loads.rows[0].days_worked, 10);
