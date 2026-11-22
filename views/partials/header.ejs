@@ -21,7 +21,7 @@
     else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
-    else if (p.startsWith('/cpa')) { sec = 'cpa'; subs = [ ['/cpa', 'CPA Overview'] ]; }
+    else if (p.startsWith('/cpa') || p.startsWith('/bizdocs')) { sec = 'cpa'; subs = [ ['/cpa', 'CPA Overview'], ['/bizdocs', 'Business Documents'] ]; }
     else if (p.startsWith('/audit') || p.startsWith('/issued')) { sec = 'audit'; subs = [ ['/audit', 'DQF & Vehicle Audit'], ['/issued', 'Issued Items'] ]; }
     else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
     else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
@@ -36,8 +36,9 @@
   } else if (user && user.role === 'cpa') {
     // CPA frame: accounting sections only, all read-only (the server
     // middleware fences the role to GETs on these paths).
-    top = [ ['/cpa', 'CPA Home'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/fuel', 'Fuel'] ];
-    if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
+    top = [ ['/cpa', 'CPA Home'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/fuel', 'Fuel'], ['/bizdocs', 'Documents'] ];
+    if (p.startsWith('/bizdocs')) { sec = 'cpa'; subs = [ ['/bizdocs', 'Business Documents'] ]; }
+    else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
     else if (p.startsWith('/fuel')) { sec = 'fuel'; subs = [ ['/fuel', 'Fuel'] ]; }
     else { sec = 'cpa'; subs = [ ['/cpa', 'Overview'] ]; }
