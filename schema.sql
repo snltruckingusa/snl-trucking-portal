@@ -465,3 +465,32 @@ CREATE TABLE IF NOT EXISTS downtime_pay (
   reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Business documents (Eric, 2026-11-22): bank/card statements and other
+-- company financial documents, uploaded by the owner and readable by
+-- the CPA (read-only, fenced in server.js). Files live in the database.
+CREATE TABLE IF NOT EXISTS business_documents (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'Bank Statement',
+  period_label TEXT,
+  original_name TEXT NOT NULL,
+  mime_type TEXT,
+  size_bytes INTEGER,
+  file_data BYTEA,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
