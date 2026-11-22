@@ -1,7 +1,8 @@
 <%- include('partials/header', { title: 'Settlement' }) %>
 <h1>Weekly Settlement</h1>
 <p class="notice">Week: Sunday ~ Saturday (Sun–Sat). Formula: driver pay = (confirmed revenue − fuel − insurance $100/day) × applied split. The split follows the tenure ladder (first 3 months 45% → 50% → 55% after 1 year; exempt drivers keep a fixed split). Friday close-out. Settlements are paid 1 week in arrears.<br>
-Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week full-attendance condition is met (judged automatically from the load records) and the owner confirms.</p>
+Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week full-attendance condition is met (judged automatically from the load records) and the owner confirms.<br>
+Downtime pay (truck in repair etc.) is added in full on top of the split pay — it is not split and not reduced by fuel or insurance.</p>
 
 <div class="card">
   <form method="GET" action="/settlement" class="form-row" style="align-items:end">
@@ -43,6 +44,7 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
         <br><span class="notice">Weekend net <%= money(r.weekend.weekendNet) %> · <%= r.weekend.conditionMet ? 'Condition met' : 'Condition not met' %><% if (r.weekend.conditionMet && !r.weekendApplied) { %> · at 70%: <%= money(r.weekend.adjustedPay) %><% } %></span>
         <% if (r.weekendApplied) { %><br><span class="badge good">Weekend 70% applied</span><% } %>
         <% } %>
+        <% if (r.downtime > 0) { %><br><span class="notice">incl. downtime +<%= money(r.downtime) %></span><% } %>
       </td>
       <% if (isAdmin) { %><td class="num"><%= money(r.companyNet) %></td><% } %>
       <td class="num"><%= r.miles %> / <%= r.gallons %></td>
@@ -88,10 +90,30 @@ Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week 
   <% } %>
 </div>
 
+<% if (isAdmin) { %>
+<div class="card">
+  <h2>Downtime / other pay</h2>
+  <p class="notice">Pay a driver in full for days the truck was down (repairs) or for other agreed work. Added on top of the split pay — not split, no fuel or insurance deduction. The entries and reasons print on the driver's statement.</p>
+  <% var anyDt = false; rows.forEach(function(r){ (r.downtimeRows || []).forEach(function(e){ anyDt = true; %>
+  <p><%= r.driver.name %> · <%= fmtDate(e.pay_date) %> · <b><%= money(e.amount) %></b><% if (e.reason) { %> — <%= e.reason %><% } %>
+    <form class="inline" method="POST" action="/settlement/downtime/<%= e.id %>/delete" onsubmit="return confirm('Delete this downtime entry?')"><button class="btn small danger" type="submit">Delete</button></form></p>
+  <% }); }); %>
+  <% if (!anyDt) { %><p class="notice">No downtime pay this week.</p><% } %>
+  <form method="POST" action="/settlement/downtime" class="form-row" style="align-items:end;margin-top:8px">
+    <div><label>Driver</label><select name="driver_id"><% rows.forEach(function(r){ %><option value="<%= r.driver.id %>"><%= r.driver.name %></option><% }); %></select></div>
+    <div><label>Date</label><input type="date" name="pay_date" value="<%= weekStartISO %>"></div>
+    <div><label>Amount $</label><input type="number" name="amount" step="0.01" min="0"></div>
+    <div><label>Reason</label><input type="text" name="reason" placeholder="e.g. Truck #101 in repair"></div>
+    <div><button type="submit">Add downtime pay</button></div>
+  </form>
+</div>
+<% } %>
+
 <div class="card">
   <h2>Statement detail (confirmed loads only)</h2>
   <% rows.forEach(function(r){ %>
     <h3><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>) <a class="btn small secondary" href="/settlement/statement?week=<%= weekStartISO %>&driver_id=<%= r.driver.id %>" target="_blank">Print / PDF statement</a> <a class="btn small secondary" href="/settlement/monthly?month=<%= weekStartISO.slice(0, 7) %>&driver_id=<%= r.driver.id %>" target="_blank">Monthly summary</a></h3>
+        <% if (r.downtimeRows && r.downtimeRows.length) { %><p class="notice" style="margin:4px 0">Downtime / other pay: <% r.downtimeRows.forEach(function(e){ %><%= fmtDate(e.pay_date) %> <%= money(e.amount) %><% if (e.reason) { %> (<%= e.reason %>)<% } %> · <% }); %>— total <b><%= money(r.downtime) %></b>, added in full.</p><% } %>
     <% if (!r.loads.length) { %><p class="notice">No confirmed loads this week.</p><% } else { %>
     <div class="table-wrap"><table>
       <tr><th>Date</th><th>Container</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
