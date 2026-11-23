@@ -20,12 +20,16 @@
     <% if (ocr && ocr.ticket_photo) { %><input type="hidden" name="ticket_photo" value="<%= ocr.ticket_photo %>"><% } %>
     <div class="form-row">
       <% if (isAdmin) { %>
-      <div><label>Driver</label><select name="driver_id" required>
-        <% drivers.forEach(function(d){ %><option value="<%= d.id %>" <%= ocr && scopedDriverId === d.id ? 'selected' : '' %>><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+      <div><label>Driver</label><select name="driver_id" id="load-driver" required>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>" <%= ocr && scopedDriverId === d.id ? 'selected' : '' %>><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
       </select></div>
       <% } else { %>
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
+      <% var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); }); %>
+      <div><label>Truck</label><select name="truck_number" id="load-truck">
+        <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === myTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
+      </select></div>
       <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(new Date()) %>"></div>
       <div><label>Job type</label><select name="job_type">
         <option value="standard" <%= !ocr || !ocr.job_type || ocr.job_type === 'standard' ? 'selected' : '' %>>Standard — Empty in · Load out</option>
@@ -267,11 +271,12 @@
   </div>
   <% } %>
   <div class="table-wrap" style="margin-top:12px"><table>
-    <tr><th>Date</th><th>Driver</th><th>Container / BOL</th><th>Pickup → Delivery</th><th class="num">Amount</th><th class="num">Miles</th><th>Status</th><th>Progress</th><th></th></tr>
+    <tr><th>Date</th><th>Driver</th><th>Truck</th><th>Container / BOL</th><th>Pickup → Delivery</th><th class="num">Amount</th><th class="num">Miles</th><th>Status</th><th>Progress</th><th></th></tr>
     <% loads.forEach(function(l){ %>
     <tr>
       <td><%= fmtDate(l.load_date) %></td>
-      <td><%= l.driver_name %> (#<%= l.truck_number || '' %>)</td>
+      <td><%= l.driver_name %></td>
+      <td>#<%= l.truck_number || l.driver_truck || '' %></td>
       <td><%= l.container_no || '' %><br><span class="notice"><%= l.bol_ref || '' %></span><% if (l.job_type && l.job_type !== 'standard') { %><br><span class="notice"><%= l.job_type === 'in_out_empty' ? 'Load in · Empty out' : 'Load in · Load out' %></span><% } %>
         <% if (l.ticket_photo) { %><br><a href="<%= l.ticket_photo %>" target="_blank">Photo</a><% } %>
         <% var ev = (typeof evidence !== 'undefined' && evidence) ? evidence[l.id] : null; %>
@@ -320,6 +325,9 @@
           <summary class="btn small secondary">Edit</summary>
           <form method="POST" action="/loads/<%= l.id %>/edit" style="min-width:280px;margin-top:8px;text-align:left">
             <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(l.load_date) %>"></div>
+            <div><label>Truck</label><select name="truck_number">
+              <% var lt = String(l.truck_number || l.driver_truck || '').replace(/^#/, ''); (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === lt ? 'selected' : '' %>>#<%= t %></option><% }) %>
+            </select></div>
             <div><label>Job type</label><select name="job_type">
               <option value="standard" <%= (l.job_type || 'standard') === 'standard' ? 'selected' : '' %>>Standard — Empty in · Load out</option>
               <option value="in_out_empty" <%= l.job_type === 'in_out_empty' ? 'selected' : '' %>>Load in · Empty out</option>
@@ -404,4 +412,12 @@
   <% if (!loads.length) { %><p class="notice">No loads found.</p><% } %>
   <p class="notice">Only <b>confirmed</b> loads count in settlement.</p>
 </div>
+<script>
+(function(){
+  var ds = document.getElementById('load-driver'), ts = document.getElementById('load-truck');
+  if (!ds || !ts) return;
+  function sync(){ var o = ds.options[ds.selectedIndex]; var t = o ? o.getAttribute('data-truck') : ''; if (!t) return; for (var i = 0; i < ts.options.length; i++) { if (ts.options[i].value === t) { ts.selectedIndex = i; break; } } }
+  ds.addEventListener('change', sync); sync();
+})();
+</script>
 <%- include('partials/footer') %>

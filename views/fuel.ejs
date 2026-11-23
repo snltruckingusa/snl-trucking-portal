@@ -7,12 +7,16 @@
   <form method="POST" action="/fuel">
     <div class="form-row">
       <% if (isAdmin) { %>
-      <div><label>Driver</label><select name="driver_id" required>
-        <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+      <div><label>Driver</label><select name="driver_id" id="fuel-driver" required>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
       </select></div>
       <% } else { %>
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
+      <% var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); }); %>
+      <div><label>Truck</label><select name="truck_number" id="fuel-truck">
+        <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === myTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
+      </select></div>
       <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
       <div><label>Gallons</label><input name="gallons" type="number" step="0.01" required placeholder="100"></div>
       <div><label>Pump $/gal</label><input name="pump_price" type="number" step="0.001" placeholder="3.899"></div>
@@ -33,15 +37,19 @@
         <% drivers.forEach(function(d){ %><option value="<%= d.id %>" <%= String(filters.driver_id) === String(d.id) ? 'selected' : '' %>><%= d.name %></option><% }) %>
       </select></div>
       <% } %>
+      <div><label>Truck</label><select name="truck"><option value="">All</option>
+        <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= String(filters.truck || '') === String(t) ? 'selected' : '' %>>#<%= t %></option><% }) %>
+      </select></div>
     </div>
     <div style="margin-top:12px"><button type="submit">Filter</button></div>
   </form>
   <div class="table-wrap" style="margin-top:12px"><table>
-    <tr><th>Date</th><th>Driver</th><th class="num">Gallons</th><th class="num">Pump $/gal</th><th class="num">TCS $/gal</th><th class="num">Cost</th><th></th></tr>
+    <tr><th>Date</th><th>Driver</th><th>Truck</th><th class="num">Gallons</th><th class="num">Pump $/gal</th><th class="num">TCS $/gal</th><th class="num">Cost</th><th></th></tr>
     <% fuel.forEach(function(f){ %>
     <tr>
       <td><%= fmtDate(f.fuel_date) %></td>
-      <td><%= f.driver_name %> (#<%= f.truck_number || '' %>)</td>
+      <td><%= f.driver_name %></td>
+      <td>#<%= f.truck_number || f.driver_truck || '' %></td>
       <td class="num"><%= f.gallons %></td>
       <td class="num"><%= f.pump_price %></td>
       <td class="num"><%= f.tcs_price %></td>
@@ -54,4 +62,12 @@
   </table></div>
   <% if (!fuel.length) { %><p class="notice">No fuel records.</p><% } %>
 </div>
+<script>
+(function(){
+  var ds = document.getElementById('fuel-driver'), ts = document.getElementById('fuel-truck');
+  if (!ds || !ts) return;
+  function sync(){ var o = ds.options[ds.selectedIndex]; var t = o ? o.getAttribute('data-truck') : ''; if (!t) return; for (var i = 0; i < ts.options.length; i++) { if (ts.options[i].value === t) { ts.selectedIndex = i; break; } } }
+  ds.addEventListener('change', sync); sync();
+})();
+</script>
 <%- include('partials/footer') %>
