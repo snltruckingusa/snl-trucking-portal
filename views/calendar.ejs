@@ -1,0 +1,86 @@
+<%- include('partials/header') %>
+<%
+  var kindColor = { dayoff: '#2563eb', vacation: '#16a34a', truck: '#ea580c', notice: '#dc2626' };
+  function chip(e) {
+    var label = (e.who ? e.who + ' · ' : '') + e.kindLabel;
+    return '<span title="' + String(e.title + (e.note ? ' — ' + e.note : '')).replace(/"/g, '&quot;') + '" style="display:block;background:' + (kindColor[e.kind] || '#555') + ';color:#fff;border-radius:4px;padding:1px 5px;margin:2px 0;font-size:11px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + label + '</span>';
+  }
+%>
+
+<div class="card">
+  <h2>Shared Calendar</h2>
+  <p class="notice">One calendar for the whole company. Drivers post their own days off; the office adds truck schedules (PM service, inspections) and notices. Everyone can see everything posted here.</p>
+  <form method="POST" action="/calendar">
+    <div class="form-row">
+      <div><label>Type</label><select name="kind">
+        <option value="dayoff">Day off</option>
+        <option value="vacation">Vacation</option>
+        <% if (isAdmin) { %><option value="truck">Truck schedule</option><option value="notice">Company notice</option><% } %>
+      </select></div>
+      <% if (isAdmin) { %>
+      <div><label>Driver</label><select name="driver_id"><option value="">—</option>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %></option><% }) %>
+      </select></div>
+      <div><label>Truck</label><select name="truck_number"><option value="">—</option>
+        <% trucks.forEach(function(t){ %><option value="<%= t %>">#<%= t %></option><% }) %>
+      </select></div>
+      <% } %>
+      <div><label>Start date</label><input type="date" name="start_date" required value="<%= today %>"></div>
+      <div><label>End date</label><input type="date" name="end_date"></div>
+    </div>
+    <div class="form-row">
+      <div style="flex:2"><label>Title</label><input type="text" name="title" maxlength="120" placeholder="e.g. Day off, PM service, Inspection due"></div>
+      <div style="flex:3"><label>Note</label><input type="text" name="note" maxlength="300" placeholder="Optional details"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Add to calendar</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <a class="btn small secondary" href="/calendar?m=<%= prevM %>">&larr; Prev</a>
+    <h2 style="margin:0"><%= monthLabel %></h2>
+    <span>
+      <a class="btn small secondary" href="/calendar?m=<%= thisM %>">Today</a>
+      <a class="btn small secondary" href="/calendar?m=<%= nextM %>">Next &rarr;</a>
+    </span>
+  </div>
+  <table style="margin-top:12px;table-layout:fixed">
+    <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+    <% for (var w = 0; w < cells.length / 7; w++) { %>
+    <tr>
+      <% for (var d = 0; d < 7; d++) { var c = cells[w * 7 + d]; %>
+      <td style="vertical-align:top;height:86px;<%= c.date === today ? 'background:#fff7e6;' : '' %><%= c.inMonth ? '' : 'opacity:.45' %>">
+        <div style="font-weight:<%= c.date === today ? 'bold' : 'normal' %>"><%= c.day %></div>
+        <% c.events.forEach(function(e){ %><%- chip(e) %><% }) %>
+      </td>
+      <% } %>
+    </tr>
+    <% } %>
+  </table>
+  <p class="notice">
+    <span style="color:#2563eb">■</span> Day off &nbsp;<span style="color:#16a34a">■</span> Vacation &nbsp;<span style="color:#ea580c">■</span> Truck schedule &nbsp;<span style="color:#dc2626">■</span> Company notice
+  </p>
+</div>
+
+<div class="card">
+  <h2>Upcoming (next 45 days)</h2>
+  <% if (!upcoming.length) { %><p class="notice">Nothing scheduled.</p><% } %>
+  <table>
+    <tr><th>Date</th><th>Who / What</th><th>Title</th><th>Note</th><th>Posted by</th><th></th></tr>
+    <% upcoming.forEach(function(e){ %>
+    <tr>
+      <td><%= e.start %><% if (e.end !== e.start) { %> → <%= e.end %><% } %></td>
+      <td><span style="color:<%= kindColor[e.kind] || '#555' %>">■</span> <%= e.who || e.kindLabel %><% if (e.driver_name && e.truck_number) { %> · #<%= String(e.truck_number).replace(/^#/, '') %><% } %></td>
+      <td><%= e.title %></td>
+      <td><%= e.note %></td>
+      <td><%= e.created_by_name %></td>
+      <td><% if (isAdmin || (myDriverId && e.created_by_driver_id === myDriverId)) { %>
+        <form class="inline" method="POST" action="/calendar/<%= e.id %>/delete" onsubmit="return confirm('Delete this entry?')"><button class="btn small danger" type="submit">Delete</button></form>
+      <% } %></td>
+    </tr>
+    <% }) %>
+  </table>
+</div>
+
+<%- include('partials/footer') %>
