@@ -520,3 +520,22 @@ UPDATE loads l
                            ELSE regexp_replace(COALESCE(d.truck_number, ''), '^#', '') END
   FROM drivers d
  WHERE d.id = l.driver_id AND l.truck_number IS NULL;
+
+-- Shared calendar (Eric, 2026-11-23): ONE calendar for the whole company.
+-- Drivers enter their own days off; the office adds entries for anyone
+-- and truck schedules (PM service, inspections, renewals). Visible to
+-- admin and drivers; a driver can delete only entries they created.
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id SERIAL PRIMARY KEY,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  kind TEXT NOT NULL DEFAULT 'dayoff',
+  driver_id INT REFERENCES drivers(id),
+  truck_number TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_by_name TEXT NOT NULL DEFAULT '',
+  created_by_driver_id INT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS calendar_events_start_idx ON calendar_events (start_date);
