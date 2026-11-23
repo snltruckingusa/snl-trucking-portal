@@ -498,3 +498,25 @@ CREATE TABLE IF NOT EXISTS ledger_transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ledger_transactions_date_idx ON ledger_transactions (txn_date);
+
+
+-- Driver/truck split (Eric, 2026-11-23): fuel and loads record the truck
+-- PER TRANSACTION, frozen at entry time. drivers.truck_number remains
+-- only the CURRENT assignment (driver overview + entry-form default).
+-- Backfill freezes each existing row at the truck the pages displayed
+-- for it — except Sterling Green (driver_id 1), who switched
+-- #101 -> #100 on 2026-11-23: his earlier rows belong to #101.
+ALTER TABLE fuel ADD COLUMN IF NOT EXISTS truck_number TEXT;
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS truck_number TEXT;
+UPDATE fuel f
+   SET truck_number = CASE WHEN f.driver_id = 1 AND f.fuel_date < DATE '2026-11-23'
+                           THEN '101'
+                           ELSE regexp_replace(COALESCE(d.truck_number, ''), '^#', '') END
+  FROM drivers d
+ WHERE d.id = f.driver_id AND f.truck_number IS NULL;
+UPDATE loads l
+   SET truck_number = CASE WHEN l.driver_id = 1 AND l.load_date < DATE '2026-11-23'
+                           THEN '101'
+                           ELSE regexp_replace(COALESCE(d.truck_number, ''), '^#', '') END
+  FROM drivers d
+ WHERE d.id = l.driver_id AND l.truck_number IS NULL;
