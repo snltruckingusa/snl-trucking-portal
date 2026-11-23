@@ -1,0 +1,308 @@
+<%- include('partials/header') %>
+
+<style>
+  .tp-headline { font-size: clamp(30px, 7vw, 46px); font-weight: 800; line-height: 1.15; margin: 10px 0 14px; }
+  .tp-line { font-size: 21px; line-height: 1.45; margin: 6px 0; }
+  .tp-progress { font-size: 15px; color: #666; text-transform: uppercase; letter-spacing: .06em; }
+  .tp-listen { display: inline-block; font-size: 22px; font-weight: 700; min-height: 64px; padding: 14px 34px; margin: 14px 0 6px; border-radius: 10px; }
+  .tp-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; }
+  .tp-nav .btn { font-size: 20px; min-height: 58px; padding: 12px 28px; }
+  .tp-opt { display: block; width: 100%; text-align: left; font-size: 19px; line-height: 1.4; min-height: 58px; padding: 14px 16px; margin: 8px 0; border: 2px solid #999; border-radius: 10px; background: #fff; color: #111; cursor: pointer; }
+  .tp-opt.sel { border-color: #2563eb; background: #dbeafe; }
+  .tp-opt.good { border-color: #16a34a; background: #dcfce7; }
+  .tp-opt.bad { border-color: #dc2626; background: #fee2e2; }
+  .tp-opt:disabled { opacity: .85; cursor: default; }
+  .tp-why { font-size: 17px; background: #fff7e6; border: 1px solid #e5c07b; border-radius: 8px; padding: 10px 12px; margin: 8px 0; display: none; }
+  .tp-q { font-size: 21px; font-weight: 700; line-height: 1.4; margin: 20px 0 6px; }
+  .tp-ack { font-size: 19px; line-height: 1.55; }
+  .tp-msg { font-size: 18px; font-weight: 700; color: #b91c1c; min-height: 24px; }
+</style>
+
+<div class="card" id="tpRoot">
+  <div class="tp-progress" id="tpProgress"></div>
+  <div id="tpSteps"></div>
+  <div class="tp-nav">
+    <button class="btn secondary" type="button" id="tpBack">← Back</button>
+    <button class="btn" type="button" id="tpNext">Next →</button>
+  </div>
+  <p class="tp-msg" id="tpMsg"></p>
+  <% if (preview) { %><p class="notice">Admin preview — listen and click through freely; nothing is saved and no record is written.</p><% } %>
+</div>
+
+<script>
+(function () {
+  var TOPIC = <%- JSON.stringify(topic).replace(/</g, '\\u003c') %>;
+  var RECORD = <%- JSON.stringify(record || null).replace(/</g, '\\u003c') %>;
+  var PREVIEW = <%= preview ? 'true' : 'false' %>;
+
+  var screens = TOPIC.screens;
+  var N = screens.length;
+  var STEP_MATCH = N, STEP_MCQ = N + 1, STEP_SIGN = N + 2, STEP_DONE = N + 3;
+  var LAST = STEP_SIGN;
+
+  var answers = { match: {}, mcq: [] };
+  if (RECORD && RECORD.answers) {
+    var ra = RECORD.answers;
+    if (ra.match && typeof ra.match === 'object') {
+      // Only restore pairs that are actually correct — anything else
+      // was never locked in by the player.
+      Object.keys(ra.match).forEach(function (k) {
+        var li = Number(k);
+        if (TOPIC.match.pairs[li] === Number(ra.match[k])) answers.match[li] = Number(ra.match[k]);
+      });
+    }
+    if (Array.isArray(ra.mcq)) {
+      ra.mcq.forEach(function (v, i) {
+        if (TOPIC.mcq[i] && Number(v) === TOPIC.mcq[i].correct) answers.mcq[i] = Number(v);
+      });
+    }
+  }
+  var completed = !!(RECORD && RECORD.completedAt);
+  var step = completed ? STEP_DONE : Math.min((RECORD && RECORD.step) || 0, LAST);
+
+  var root = document.getElementById('tpSteps');
+  var progressEl = document.getElementById('tpProgress');
+  var backBtn = document.getElementById('tpBack');
+  var nextBtn = document.getElementById('tpNext');
+  var msgEl = document.getElementById('tpMsg');
+  var stepEls = [];
+
+  function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  // ---- Listen screens ----
+  screens.forEach(function (s, i) {
+    var d = el(
+      '<div>' +
+      '<div class="tp-headline">' + esc(s.headline) + '</div>' +
+      s.lines.map(function (l) { return '<div class="tp-line">' + esc(l) + '</div>'; }).join('') +
+      '<div><button class="btn tp-listen" type="button">▶ Listen</button></div>' +
+      '<audio controls preload="none" style="width:100%" src="' + TOPIC.audioBase + s.audio + '"></audio>' +
+      '<details style="margin-top:10px"><summary style="font-size:16px">Read instead</summary>' +
+      '<p style="font-size:17px;line-height:1.55">' + esc(s.narration) + '</p></details>' +
+      '</div>'
+    );
+    var audio = d.querySelector('audio');
+    var btn = d.querySelector('.tp-listen');
+    btn.addEventListener('click', function () {
+      if (audio.paused) { audio.play(); btn.textContent = '⏸ Pause'; }
+      else { audio.pause(); btn.textContent = '▶ Listen'; }
+    });
+    audio.addEventListener('ended', function () { btn.textContent = '▶ Listen again'; });
+    d._pause = function () { audio.pause(); btn.textContent = '▶ Listen'; };
+    root.appendChild(d); stepEls.push(d);
+  });
+
+  // ---- Check A: tap to match ----
+  var selLeft = null;
+  var matchBtnsL = [], matchBtnsR = [];
+  var matchWhy = el('<div class="tp-why"></div>');
+  var matchDiv = el(
+    '<div><div class="tp-headline" style="font-size:30px">Quick check 1 of 2</div>' +
+    '<p class="tp-line">' + esc(TOPIC.match.instruction) + '</p>' +
+    '<div style="display:flex;gap:10px"><div style="flex:1" id="tpML"></div><div style="flex:1" id="tpMR"></div></div></div>'
+  );
+  var colL = matchDiv.querySelector('#tpML'), colR = matchDiv.querySelector('#tpMR');
+  TOPIC.match.left.forEach(function (txt, li) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'tp-opt'; b.textContent = txt;
+    b.addEventListener('click', function () {
+      if (answers.match[li] !== undefined) return;
+      selLeft = li;
+      matchBtnsL.forEach(function (x, xi) { x.classList.toggle('sel', xi === li && answers.match[xi] === undefined); });
+    });
+    colL.appendChild(b); matchBtnsL.push(b);
+  });
+  TOPIC.match.right.forEach(function (txt, ri) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'tp-opt'; b.textContent = txt;
+    b.addEventListener('click', function () {
+      if (selLeft === null) return;
+      if (Object.keys(answers.match).some(function (k) { return answers.match[k] === ri; })) return;
+      var li = selLeft;
+      if (TOPIC.match.pairs[li] === ri) {
+        answers.match[li] = ri;
+        matchBtnsL[li].classList.remove('sel'); matchBtnsL[li].classList.add('good'); matchBtnsL[li].disabled = true;
+        b.classList.add('good'); b.disabled = true;
+        matchWhy.textContent = '✔ ' + TOPIC.match.why[li];
+        matchWhy.style.display = 'block';
+        selLeft = null;
+        saveProgress();
+        refreshNav();
+      } else {
+        b.classList.add('bad');
+        setTimeout(function () { b.classList.remove('bad'); }, 600);
+      }
+    });
+    colR.appendChild(b); matchBtnsR.push(b);
+  });
+  matchDiv.appendChild(matchWhy);
+  // Restore locked pairs.
+  Object.keys(answers.match).forEach(function (k) {
+    var li = Number(k), ri = answers.match[k];
+    matchBtnsL[li].classList.add('good'); matchBtnsL[li].disabled = true;
+    matchBtnsR[ri].classList.add('good'); matchBtnsR[ri].disabled = true;
+  });
+  root.appendChild(matchDiv); stepEls.push(matchDiv);
+
+  // ---- Check B: multiple choice ----
+  var mcqDiv = el('<div><div class="tp-headline" style="font-size:30px">Quick check 2 of 2</div><p class="tp-line">Pick the best answer for each question.</p></div>');
+  TOPIC.mcq.forEach(function (item, qi) {
+    var qd = document.createElement('div');
+    qd.innerHTML = '<div class="tp-q">' + (qi + 1) + '. ' + esc(item.q) + '</div>';
+    var why = el('<div class="tp-why"></div>');
+    item.options.forEach(function (opt, oi) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'tp-opt'; b.textContent = opt;
+      b.addEventListener('click', function () {
+        if (answers.mcq[qi] !== undefined) return;
+        why.textContent = (oi === item.correct ? '✔ ' : '✘ ') + item.why;
+        why.style.display = 'block';
+        if (oi === item.correct) {
+          answers.mcq[qi] = oi;
+          b.classList.add('good');
+          qd.querySelectorAll('.tp-opt').forEach(function (x) { x.disabled = true; });
+          saveProgress();
+          refreshNav();
+        } else {
+          b.classList.add('bad'); b.disabled = true;
+        }
+      });
+      if (answers.mcq[qi] === oi) { b.classList.add('good'); }
+      qd.appendChild(b);
+    });
+    if (answers.mcq[qi] !== undefined) {
+      qd.querySelectorAll('.tp-opt').forEach(function (x) { x.disabled = true; });
+      why.textContent = '✔ ' + item.why; why.style.display = 'block';
+    }
+    qd.appendChild(why);
+    mcqDiv.appendChild(qd);
+  });
+  root.appendChild(mcqDiv); stepEls.push(mcqDiv);
+
+  // ---- Sign ----
+  var signDiv = el(
+    '<div><div class="tp-headline" style="font-size:30px">Sign to finish</div>' +
+    '<p class="tp-ack">' + esc(TOPIC.acknowledgment) + '</p>' +
+    '<p class="tp-line" style="margin-top:14px">Your full name</p>' +
+    '<input type="text" id="tpName" autocomplete="name" style="width:100%;font-size:20px;padding:12px;box-sizing:border-box" placeholder="Print your full name">' +
+    '<p class="tp-line" style="margin-top:14px">Draw your signature</p>' +
+    '<canvas id="tpPad" width="1120" height="360" style="width:100%;max-width:560px;height:180px;border:1px solid #999;background:#fff;touch-action:none"></canvas>' +
+    '<div style="margin-top:8px"><button class="btn small" type="button" id="tpClear">Clear</button></div>' +
+    '<p class="notice" style="margin-top:10px">Company: S&amp;L Trucking LLC · Date: today (recorded when you finish)</p></div>'
+  );
+  root.appendChild(signDiv); stepEls.push(signDiv);
+
+  var pad = signDiv.querySelector('#tpPad');
+  var pctx = pad.getContext('2d');
+  pctx.lineWidth = 5; pctx.lineCap = 'round'; pctx.lineJoin = 'round'; pctx.strokeStyle = '#111';
+  var drawing = false, last = null, drawn = false;
+  function padPos(ev) {
+    var r = pad.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * (pad.width / r.width), y: (ev.clientY - r.top) * (pad.height / r.height) };
+  }
+  pad.addEventListener('pointerdown', function (ev) { drawing = true; last = padPos(ev); pad.setPointerCapture(ev.pointerId); });
+  pad.addEventListener('pointermove', function (ev) {
+    if (!drawing) return;
+    var p = padPos(ev);
+    pctx.beginPath(); pctx.moveTo(last.x, last.y); pctx.lineTo(p.x, p.y); pctx.stroke();
+    last = p; drawn = true; refreshNav();
+  });
+  pad.addEventListener('pointerup', function () { drawing = false; });
+  signDiv.querySelector('#tpClear').addEventListener('click', function () {
+    pctx.clearRect(0, 0, pad.width, pad.height); drawn = false; refreshNav();
+  });
+  var nameInput = signDiv.querySelector('#tpName');
+  nameInput.addEventListener('input', refreshNav);
+
+  // ---- Done ----
+  var doneDiv = el(
+    '<div style="text-align:center;padding:24px 0">' +
+    '<div class="tp-headline" style="color:#16a34a">✔ Completed</div>' +
+    '<p class="tp-line">You finished <b>' + esc(TOPIC.title) + '</b>.' +
+    (completed && RECORD.completedAt ? '<br>Completed on ' + esc(RECORD.completedAt) + '.' : '') +
+    '<br>Your signed record is on file with the office. Thank you — get home safe.</p>' +
+    '<p style="margin-top:16px"><a class="btn" href="/training">Back to Safety Training</a></p></div>'
+  );
+  root.appendChild(doneDiv); stepEls.push(doneDiv);
+
+  // ---- Flow control ----
+  function matchDone() { return Object.keys(answers.match).length === TOPIC.match.pairs.length; }
+  function mcqDone() { return TOPIC.mcq.every(function (_, i) { return answers.mcq[i] !== undefined; }); }
+
+  function refreshNav() {
+    backBtn.style.visibility = (step === 0 || step === STEP_DONE) ? 'hidden' : 'visible';
+    if (step === STEP_DONE) { nextBtn.style.display = 'none'; return; }
+    nextBtn.style.display = '';
+    if (step === STEP_MATCH) nextBtn.disabled = !matchDone();
+    else if (step === STEP_MCQ) nextBtn.disabled = !mcqDone();
+    else if (step === STEP_SIGN) {
+      nextBtn.textContent = 'Finish ✔';
+      nextBtn.disabled = !(drawn && nameInput.value.trim().length > 1);
+    } else nextBtn.disabled = false;
+    if (step !== STEP_SIGN) nextBtn.textContent = 'Next →';
+  }
+
+  function show() {
+    stepEls.forEach(function (d, i) {
+      if (i !== step && d._pause) d._pause();
+      d.style.display = i === step ? '' : 'none';
+    });
+    if (step < N) progressEl.textContent = TOPIC.title + ' · Screen ' + (step + 1) + ' of ' + N;
+    else if (step === STEP_MATCH) progressEl.textContent = TOPIC.title + ' · Check 1 of 2';
+    else if (step === STEP_MCQ) progressEl.textContent = TOPIC.title + ' · Check 2 of 2';
+    else if (step === STEP_SIGN) progressEl.textContent = TOPIC.title + ' · Sign';
+    else progressEl.textContent = TOPIC.title;
+    msgEl.textContent = '';
+    refreshNav();
+    window.scrollTo(0, 0);
+  }
+
+  function saveProgress() {
+    if (PREVIEW || completed) return;
+    try {
+      fetch('/training/' + TOPIC.id + '/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: step, answers: answers }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (e) { /* progress saving is best-effort */ }
+  }
+
+  backBtn.addEventListener('click', function () {
+    if (step > 0 && step !== STEP_DONE) { step--; show(); saveProgress(); }
+  });
+
+  nextBtn.addEventListener('click', function () {
+    if (step < STEP_SIGN) { step++; show(); saveProgress(); return; }
+    if (step !== STEP_SIGN) return;
+    // Finish: verify + sign on the server.
+    if (PREVIEW) { msgEl.textContent = 'Preview only — nothing was saved.'; return; }
+    nextBtn.disabled = true;
+    fetch('/training/' + TOPIC.id + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answers, signature: pad.toDataURL('image/png'), name: nameInput.value.trim() }),
+    }).then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      .then(function (out) {
+        if (out.body && out.body.ok) { completed = true; step = STEP_DONE; show(); return; }
+        nextBtn.disabled = false;
+        var failed = (out.body && out.body.failed) || [];
+        if (failed.indexOf('match') >= 0) { step = STEP_MATCH; show(); msgEl.textContent = 'One match is not right yet — check this screen and try again.'; }
+        else if (failed.indexOf('mcq') >= 0) { step = STEP_MCQ; show(); msgEl.textContent = 'One answer is not right yet — check this screen and try again.'; }
+        else if (failed.indexOf('signature') >= 0) msgEl.textContent = 'The signature did not come through — please draw it again.';
+        else if (failed.indexOf('name') >= 0) msgEl.textContent = 'Please print your full name.';
+        else msgEl.textContent = 'Something went wrong saving. Please try again, or tell the office.';
+      })
+      .catch(function () {
+        nextBtn.disabled = false;
+        msgEl.textContent = 'Connection problem — please try again.';
+      });
+  });
+
+  show();
+})();
+</script>
+
+<%- include('partials/footer') %>
