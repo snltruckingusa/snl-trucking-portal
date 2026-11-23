@@ -113,6 +113,7 @@ app.use('/cpa', require('./routes/cpa'));
 app.use('/bizdocs', require('./routes/bizdocs'));
 app.use('/ledger', require('./routes/ledger'));
 app.use('/calendar', require('./routes/calendar'));
+app.use('/training', require('./routes/training'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
