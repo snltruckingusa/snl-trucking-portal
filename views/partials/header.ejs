@@ -13,13 +13,14 @@
   // route has to change. (Frame redesign, Nov 15, 2026.)
   var p = (typeof path !== 'undefined' && path) ? path : '/';
   var sec = 'home', subs = [], top = [];
-  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', calendar: '/calendar', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck', cpa: '/cpa', fuel: '/fuel' };
+  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', calendar: '/calendar', training: '/training', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck', cpa: '/cpa', fuel: '/fuel' };
   if (user && user.role === 'admin') {
-    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/cpa', 'CPA'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
+    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/training', 'Training'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/cpa', 'CPA'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
     else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/drivers/overview', 'Driver Overview'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
     else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
     else if (p.startsWith('/calendar')) { sec = 'calendar'; subs = [ ['/calendar', 'Shared Calendar'] ]; }
+    else if (p.startsWith('/training')) { sec = 'training'; subs = [ ['/training', 'Safety Training'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
     else if (p.startsWith('/cpa') || p.startsWith('/bizdocs') || p.startsWith('/ledger')) { sec = 'cpa'; subs = [ ['/cpa', 'CPA Overview'], ['/bizdocs', 'Business Documents'], ['/ledger', 'Ledger'] ]; }
@@ -27,10 +28,11 @@
     else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
     else { sec = 'more'; subs = [ ['/safety', 'Safety Training'], ['/instructions', 'Company Rules'], ['/manual', 'Portal Manual'], ['/rates', 'Rates & Pay'], ['/benefits', 'Benefits'] ]; }
   } else if (user && user.role === 'driver') {
-    top = [ ['/', 'Home'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/settlement', 'Pay'], ['/documents', 'My File'], ['/mytruck', 'My Truck'], ['/more', 'More'] ];
+    top = [ ['/', 'Home'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/training', 'Training'], ['/settlement', 'Pay'], ['/documents', 'My File'], ['/mytruck', 'My Truck'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Home'], ['/safety', 'Safety Training'] ]; }
     else if (p.startsWith('/loads') || p.startsWith('/fuel')) { sec = 'loads'; subs = [ ['/loads', 'My Loads'], ['/fuel', 'Fuel'] ]; }
     else if (p.startsWith('/calendar')) { sec = 'calendar'; subs = [ ['/calendar', 'Shared Calendar'] ]; }
+    else if (p.startsWith('/training')) { sec = 'training'; subs = [ ['/training', 'Safety Training'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'pay'; subs = [ ['/settlement', 'Settlement'] ]; }
     else if (p.startsWith('/documents')) { sec = 'myfile'; subs = [ ['/documents', 'My File'] ]; }
     else if (p.startsWith('/mytruck')) { sec = 'mytruck'; subs = [ ['/mytruck', 'My Truck'] ]; }
@@ -76,6 +78,7 @@
     <a href="/">Home</a>
     <a href="/loads">Loads</a>
     <a href="/calendar">Calendar</a>
+    <a href="/training">Training</a>
     <a href="/settlement">Pay</a>
     <a href="/documents">My File</a>
     <a href="/more">More</a>
