@@ -11,6 +11,10 @@ const router = express.Router();
 // shared visibility is the point — but a driver can delete only the
 // entries they created. (Mechanic and CPA roles never reach this page:
 // the server.js role fences bounce them before routing.)
+//
+// Every handler is wrapped in try/catch on purpose: an unhandled
+// rejection in an async handler exits the whole Node process, so a
+// calendar bug must never be able to take the portal down.
 
 const KINDS = {
   dayoff: 'Day off',
@@ -49,134 +53,158 @@ function parseMonth(s) {
 
 const validDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : null;
 
+// NOTE: helpers.toISODate does NOT guard null (it calls d.getFullYear()
+// directly) — a NULL end_date throws. Always convert DB dates through
+// this guard instead.
+function isoOf(v) {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d) ? null : toISODate(d);
+}
+
 function decorate(rows) {
   return rows.map((e) => ({
     ...e,
-    start: toISODate(e.start_date),
-    end: toISODate(e.end_date) || toISODate(e.start_date),
+    start: isoOf(e.start_date),
+    end: isoOf(e.end_date) || isoOf(e.start_date),
     kindLabel: KINDS[e.kind] || e.kind,
     who: e.driver_name ? e.driver_name.split(' ')[0] : (e.truck_number ? '#' + normTruck(e.truck_number) : ''),
   }));
 }
 
 router.get('/', requireLogin, async (req, res) => {
-  const u = req.session.user;
-  if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
-  const admin = isAdmin(req);
-  const myDriverId = scopedDriverId(req);
-  const { y, m } = parseMonth(req.query.m);
-  const first = ymd(y, m, 1);
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  const last = ymd(y, m, lastDay);
+  try {
+    const u = req.session.user;
+    if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
+    const admin = isAdmin(req);
+    const myDriverId = scopedDriverId(req);
+    const { y, m } = parseMonth(req.query.m);
+    const first = ymd(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const last = ymd(y, m, lastDay);
 
-  const r = await query(
-    `SELECT e.*, d.name AS driver_name FROM calendar_events e
-     LEFT JOIN drivers d ON d.id = e.driver_id
-     WHERE e.start_date <= $1 AND COALESCE(e.end_date, e.start_date) >= $2
-     ORDER BY e.start_date, e.id`,
-    [last, first]
-  );
-  const events = decorate(r.rows);
+    const r = await query(
+      `SELECT e.*, d.name AS driver_name FROM calendar_events e
+       LEFT JOIN drivers d ON d.id = e.driver_id
+       WHERE e.start_date <= $1 AND COALESCE(e.end_date, e.start_date) >= $2
+       ORDER BY e.start_date, e.id`,
+      [last, first]
+    );
+    const events = decorate(r.rows);
 
-  // Month grid, weeks starting Sunday.
-  const offset = new Date(y, m, 1).getDay();
-  const cellCount = Math.ceil((offset + lastDay) / 7) * 7;
-  const cells = [];
-  for (let i = 0; i < cellCount; i++) {
-    const d = new Date(y, m, 1 - offset + i);
-    const ds = ymd(d.getFullYear(), d.getMonth(), d.getDate());
-    cells.push({
-      date: ds,
-      day: d.getDate(),
-      inMonth: d.getMonth() === m,
-      events: events.filter((e) => e.start <= ds && ds <= e.end),
+    // Month grid, weeks starting Sunday.
+    const offset = new Date(y, m, 1).getDay();
+    const cellCount = Math.ceil((offset + lastDay) / 7) * 7;
+    const cells = [];
+    for (let i = 0; i < cellCount; i++) {
+      const d = new Date(y, m, 1 - offset + i);
+      const ds = ymd(d.getFullYear(), d.getMonth(), d.getDate());
+      cells.push({
+        date: ds,
+        day: d.getDate(),
+        inMonth: d.getMonth() === m,
+        events: events.filter((e) => e.start && e.end && e.start <= ds && ds <= e.end),
+      });
+    }
+
+    const now = new Date();
+    const today = ymd(now.getFullYear(), now.getMonth(), now.getDate());
+    const horizon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 45);
+    const horizonStr = ymd(horizon.getFullYear(), horizon.getMonth(), horizon.getDate());
+    const up = await query(
+      `SELECT e.*, d.name AS driver_name FROM calendar_events e
+       LEFT JOIN drivers d ON d.id = e.driver_id
+       WHERE COALESCE(e.end_date, e.start_date) >= $1 AND e.start_date <= $2
+       ORDER BY e.start_date, e.id`,
+      [today, horizonStr]
+    );
+
+    const prev = new Date(y, m - 1, 1);
+    const next = new Date(y, m + 1, 1);
+    const drivers = admin ? (await query('SELECT * FROM drivers ORDER BY name')).rows : [];
+    const trucks = admin ? await truckList() : [];
+
+    res.render('calendar', {
+      title: 'Calendar',
+      cells, events, upcoming: decorate(up.rows),
+      monthLabel: `${MONTH_NAMES[m]} ${y}`,
+      prevM: `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`,
+      nextM: `${next.getFullYear()}-${pad(next.getMonth() + 1)}`,
+      thisM: `${now.getFullYear()}-${pad(now.getMonth() + 1)}`,
+      today, kinds: KINDS, isAdmin: admin, myDriverId, drivers, trucks,
     });
+  } catch (err) {
+    console.error('[calendar] GET failed:', err);
+    res.status(500).send('Calendar could not be loaded. Please tell the office.');
   }
-
-  const now = new Date();
-  const today = ymd(now.getFullYear(), now.getMonth(), now.getDate());
-  const horizon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 45);
-  const horizonStr = ymd(horizon.getFullYear(), horizon.getMonth(), horizon.getDate());
-  const up = await query(
-    `SELECT e.*, d.name AS driver_name FROM calendar_events e
-     LEFT JOIN drivers d ON d.id = e.driver_id
-     WHERE COALESCE(e.end_date, e.start_date) >= $1 AND e.start_date <= $2
-     ORDER BY e.start_date, e.id`,
-    [today, horizonStr]
-  );
-
-  const prev = new Date(y, m - 1, 1);
-  const next = new Date(y, m + 1, 1);
-  const drivers = admin ? (await query('SELECT * FROM drivers ORDER BY name')).rows : [];
-  const trucks = admin ? await truckList() : [];
-
-  res.render('calendar', {
-    title: 'Calendar',
-    cells, events, upcoming: decorate(up.rows),
-    monthLabel: `${MONTH_NAMES[m]} ${y}`,
-    prevM: `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`,
-    nextM: `${next.getFullYear()}-${pad(next.getMonth() + 1)}`,
-    thisM: `${now.getFullYear()}-${pad(now.getMonth() + 1)}`,
-    today, kinds: KINDS, isAdmin: admin, myDriverId, drivers, trucks,
-  });
 });
 
 router.post('/', requireLogin, async (req, res) => {
-  const u = req.session.user;
-  if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
-  const admin = isAdmin(req);
-  const myDriverId = scopedDriverId(req);
+  try {
+    const u = req.session.user;
+    if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
+    const admin = isAdmin(req);
+    const myDriverId = scopedDriverId(req);
 
-  let kind = String(req.body.kind || 'dayoff');
-  if (!KINDS[kind]) kind = 'dayoff';
-  let driver_id = null;
-  let truck_number = null;
-  let createdByName = 'Office';
-  let createdByDriverId = null;
+    let kind = String(req.body.kind || 'dayoff');
+    if (!KINDS[kind]) kind = 'dayoff';
+    let driver_id = null;
+    let truck_number = null;
+    let createdByName = 'Office';
+    let createdByDriverId = null;
 
-  if (admin) {
-    if (req.body.driver_id) driver_id = parseInt(req.body.driver_id, 10) || null;
-    truck_number = normTruck(req.body.truck_number) || null;
-    if (kind === 'notice') { driver_id = null; truck_number = null; }
-    if (kind === 'truck') driver_id = null;
-  } else {
-    if (kind !== 'dayoff' && kind !== 'vacation') kind = 'dayoff';
-    driver_id = myDriverId;
-    createdByDriverId = myDriverId;
-    const me = await query('SELECT name FROM drivers WHERE id = $1', [myDriverId]);
-    createdByName = me.rows.length ? me.rows[0].name : 'Driver';
+    if (admin) {
+      if (req.body.driver_id) driver_id = parseInt(req.body.driver_id, 10) || null;
+      truck_number = normTruck(req.body.truck_number) || null;
+      if (kind === 'notice') { driver_id = null; truck_number = null; }
+      if (kind === 'truck') driver_id = null;
+    } else {
+      if (kind !== 'dayoff' && kind !== 'vacation') kind = 'dayoff';
+      driver_id = myDriverId;
+      createdByDriverId = myDriverId;
+      const me = await query('SELECT name FROM drivers WHERE id = $1', [myDriverId]);
+      createdByName = me.rows.length ? me.rows[0].name : 'Driver';
+    }
+
+    const start = validDate(req.body.start_date);
+    if (!start) return res.redirect('/calendar');
+    let end = validDate(req.body.end_date) || start;
+    if (end < start) end = start;
+
+    let title = String(req.body.title || '').trim().slice(0, 120);
+    if (!title) title = KINDS[kind];
+    const note = String(req.body.note || '').trim().slice(0, 300);
+
+    await query(
+      `INSERT INTO calendar_events (start_date, end_date, kind, driver_id, truck_number, title, note, created_by_name, created_by_driver_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [start, end === start ? null : end, kind, driver_id, truck_number, title, note, createdByName, createdByDriverId]
+    );
+    res.redirect('/calendar?m=' + start.slice(0, 7));
+  } catch (err) {
+    console.error('[calendar] POST failed:', err);
+    res.status(500).send('Calendar entry could not be saved. Please tell the office.');
   }
-
-  const start = validDate(req.body.start_date);
-  if (!start) return res.redirect('/calendar');
-  let end = validDate(req.body.end_date) || start;
-  if (end < start) end = start;
-
-  let title = String(req.body.title || '').trim().slice(0, 120);
-  if (!title) title = KINDS[kind];
-  const note = String(req.body.note || '').trim().slice(0, 300);
-
-  await query(
-    `INSERT INTO calendar_events (start_date, end_date, kind, driver_id, truck_number, title, note, created_by_name, created_by_driver_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [start, end === start ? null : end, kind, driver_id, truck_number, title, note, createdByName, createdByDriverId]
-  );
-  res.redirect('/calendar?m=' + start.slice(0, 7));
 });
 
 router.post('/:id/delete', requireLogin, async (req, res) => {
-  const u = req.session.user;
-  if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
-  const admin = isAdmin(req);
-  const myDriverId = scopedDriverId(req);
-  const r = await query('SELECT * FROM calendar_events WHERE id = $1', [req.params.id]);
-  if (r.rows.length) {
-    const e = r.rows[0];
-    if (admin || (myDriverId && e.created_by_driver_id === myDriverId)) {
-      await query('DELETE FROM calendar_events WHERE id = $1', [req.params.id]);
+  try {
+    const u = req.session.user;
+    if (u.role !== 'admin' && u.role !== 'driver') return res.redirect('/');
+    const admin = isAdmin(req);
+    const myDriverId = scopedDriverId(req);
+    const r = await query('SELECT * FROM calendar_events WHERE id = $1', [req.params.id]);
+    if (r.rows.length) {
+      const e = r.rows[0];
+      if (admin || (myDriverId && e.created_by_driver_id === myDriverId)) {
+        await query('DELETE FROM calendar_events WHERE id = $1', [req.params.id]);
+      }
     }
+    res.redirect('/calendar');
+  } catch (err) {
+    console.error('[calendar] DELETE failed:', err);
+    res.status(500).send('Calendar entry could not be deleted. Please tell the office.');
   }
-  res.redirect('/calendar');
 });
 
 module.exports = router;
