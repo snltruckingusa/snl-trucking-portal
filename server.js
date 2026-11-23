@@ -112,6 +112,7 @@ app.use('/issued', require('./routes/issued'));
 app.use('/cpa', require('./routes/cpa'));
 app.use('/bizdocs', require('./routes/bizdocs'));
 app.use('/ledger', require('./routes/ledger'));
+app.use('/calendar', require('./routes/calendar'));
 
 // 404
 app.use((req, res) => res.status(404).render('404', { isAdmin: false }));
