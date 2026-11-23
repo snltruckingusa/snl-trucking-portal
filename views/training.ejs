@@ -1,0 +1,51 @@
+<%- include('partials/header') %>
+
+<div class="card">
+  <h2>Safety Training</h2>
+  <p class="notice">Short listen-first topics. Press play on each screen and listen, answer two quick checks, and sign — it all happens on one page, and if you get interrupted you can pick up right where you stopped.</p>
+  <% topics.forEach(function(t){ %>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #ddd">
+    <div>
+      <div style="font-size:20px;font-weight:bold"><%= t.title %></div>
+      <div class="notice" style="margin:2px 0"><%= t.subtitle %></div>
+      <% if (!isAdmin) { %>
+      <div>
+        <% if (t.status.key === 'done') { %><span style="color:#16a34a;font-weight:bold">✔ <%= t.status.label %></span>
+        <% } else if (t.status.key === 'progress') { %><span style="color:#ea580c;font-weight:bold">◐ In progress</span>
+        <% } else { %><span class="notice">Not started</span><% } %>
+      </div>
+      <% } %>
+    </div>
+    <div>
+      <% if (isAdmin) { %><a class="btn small secondary" href="/training/<%= t.id %>">Preview</a>
+      <% } else if (t.status.key === 'done') { %><a class="btn small secondary" href="/training/<%= t.id %>">Review</a>
+      <% } else if (t.status.key === 'progress') { %><a class="btn" href="/training/<%= t.id %>">Continue</a>
+      <% } else { %><a class="btn" href="/training/<%= t.id %>">Start</a><% } %>
+    </div>
+  </div>
+  <% }) %>
+</div>
+
+<% if (isAdmin && matrix) { %>
+<div class="card">
+  <h2>Completion by driver</h2>
+  <table>
+    <tr><th>Driver</th><% topics.forEach(function(t){ %><th><%= t.title %></th><% }) %></tr>
+    <% matrix.forEach(function(row){ %>
+    <tr>
+      <td><%= row.driver.name %></td>
+      <% row.cells.forEach(function(c){ %>
+      <td>
+        <% if (c.key === 'done') { %><span style="color:#16a34a;font-weight:bold">✔ <%= c.label %></span>
+        <% } else if (c.key === 'progress') { %><span style="color:#ea580c">In progress</span>
+        <% } else { %><span class="notice">—</span><% } %>
+      </td>
+      <% }) %>
+    </tr>
+    <% }) %>
+  </table>
+  <p class="notice">A topic counts as completed only after the driver finishes both checks and signs — the office never has to take anyone's word for it.</p>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>
