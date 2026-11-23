@@ -22,6 +22,28 @@ const { parseDispatchText, splitDeliveryLine } = require('../lib/dispatch');
 
 const router = express.Router();
 
+// Driver/truck split (Eric, 2026-11-23): each record names its truck,
+// frozen at entry time. drivers.truck_number is only the driver's
+// CURRENT assignment (form default). Truck choices come from the
+// registered trucks only — never free-typed.
+const normTruck = (s) => String(s || '').trim().replace(/^#/, '');
+async function truckList() {
+  const r = await query(
+    `SELECT truck_number FROM (
+       SELECT regexp_replace(truck_number, '^#', '') AS truck_number FROM vehicles
+       UNION SELECT regexp_replace(truck_number, '^#', '') FROM drivers WHERE truck_number IS NOT NULL AND truck_number <> ''
+       UNION SELECT regexp_replace(truck_number, '^#', '') FROM vehicle_docs
+       UNION SELECT regexp_replace(truck_number, '^#', '') FROM mechanic_logs
+     ) t WHERE truck_number <> '' ORDER BY truck_number`
+  );
+  return r.rows.map((x) => x.truck_number);
+}
+async function defaultTruck(driverId) {
+  if (!driverId) return '';
+  const r = await query('SELECT truck_number FROM drivers WHERE id = $1', [driverId]);
+  return r.rows.length ? normTruck(r.rows[0].truck_number) : '';
+}
+
 const imageFilter = (req, file, cb) => {
   if (/^image\//.test(file.mimetype)) cb(null, true);
   else cb(new Error('Only image files are accepted.'));
@@ -288,7 +310,7 @@ async function weekClosed(driverId, dateISO) {
   return r.rows.length > 0 && r.rows[0].status === 'closed';
 }
 
-const LOG_FIELDS = ['load_date', 'job_type', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
+const LOG_FIELDS = ['load_date', 'job_type', 'truck_number', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
   'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status', 'yard_fee'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
@@ -395,7 +417,7 @@ router.get('/', requireLogin, async (req, res) => {
     ({ where, params } = loadWhere(req));
   }
   const r = await query(
-    `SELECT l.*, d.name AS driver_name, d.truck_number FROM loads l
+    `SELECT l.*, d.name AS driver_name, d.truck_number AS driver_truck FROM loads l
      JOIN drivers d ON d.id = l.driver_id ${where}
      ORDER BY l.load_date DESC, l.id DESC`,
     params
@@ -410,7 +432,7 @@ router.get('/', requireLogin, async (req, res) => {
   decorateRows(r.rows);
   const ppData = await prepullData(req);
   res.render('loads', {
-    loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
+    loads: r.rows, drivers: drivers.rows, trucks: await truckList(), evidence, emptyMatch,
     myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
     filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
@@ -459,7 +481,7 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   const drivers = await query('SELECT * FROM drivers ORDER BY name');
   const { where, params } = loadWhere(req);
   const r = await query(
-    `SELECT l.*, d.name AS driver_name, d.truck_number FROM loads l
+    `SELECT l.*, d.name AS driver_name, d.truck_number AS driver_truck FROM loads l
      JOIN drivers d ON d.id = l.driver_id ${where}
      ORDER BY l.load_date DESC, l.id DESC`,
     params
@@ -471,7 +493,7 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
   decorateRows(r.rows);
   const ppData = await prepullData(req);
   res.render('loads', {
-    loads: r.rows, drivers: drivers.rows, evidence, emptyMatch,
+    loads: r.rows, drivers: drivers.rows, trucks: await truckList(), evidence, emptyMatch,
     myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
     filters: { from: '', to: '', driver_id: '', status: '' },
     isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
@@ -513,10 +535,12 @@ router.post('/', requireLogin, async (req, res) => {
   // wait for the owner's dispatch approval.
   const dispatchOk = !scope;
   const ticketsOk = finalStatus === 'confirmed';
+  let truck_number = normTruck(req.body.truck_number);
+  if (!truck_number) truck_number = await defaultTruck(driver_id);
   const ins = await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin, job_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
+       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin, job_type, truck_number)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      delivery,
@@ -526,7 +550,7 @@ router.post('/', requireLogin, async (req, res) => {
      miles, finalStatus,
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
      (req.body.empty_container || '').trim().toUpperCase() || null, dispatchOk, ticketsOk,
-     (req.body.empty_pin || '').trim() || null, (req.body.load_pin || '').trim() || null, jobType]
+     (req.body.empty_pin || '').trim() || null, (req.body.load_pin || '').trim() || null, jobType, truck_number || null]
   );
   // The dispatch capture is the root document of the load (Eric,
   // 2026-11-14): everything on the skeleton was read from it, so the
@@ -568,6 +592,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
     rate: num(req.body.rate), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
     detention: num(req.body.detention), overweight: num(req.body.overweight),
     fsc: num(req.body.fsc), miles: num(req.body.miles),
+    truck_number: req.body.truck_number !== undefined ? (normTruck(req.body.truck_number) || old.truck_number) : (old.truck_number || null),
     // Only the owner's edit form carries a yard_fee field; any other
     // edit keeps the recorded fee (a driver edit must never wipe it).
     yard_fee: req.body.yard_fee !== undefined ? num(req.body.yard_fee) : num(old.yard_fee),
@@ -604,7 +629,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
        overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
        dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
        tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END,
-       empty_pin=$20, load_pin=$21, job_type=$22, yard_fee=$23
+       empty_pin=$20, load_pin=$21, job_type=$22, yard_fee=$23, truck_number=$24
      WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
@@ -613,7 +638,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
      (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
-     newVals.empty_pin, newVals.load_pin, newVals.job_type, newVals.yard_fee]
+     newVals.empty_pin, newVals.load_pin, newVals.job_type, newVals.yard_fee, newVals.truck_number]
   );
   res.redirect('/loads');
 });
