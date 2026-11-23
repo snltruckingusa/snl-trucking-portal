@@ -78,7 +78,7 @@
       s.lines.map(function (l) { return '<div class="tp-line">' + esc(l) + '</div>'; }).join('') +
       '<div><button class="btn tp-listen" type="button">▶ Listen</button></div>' +
       '<audio controls preload="none" style="width:100%" src="' + TOPIC.audioBase + s.audio + '"></audio>' +
-      '<details style="margin-top:10px"><summary style="font-size:16px">Read instead</summary>' +
+      '<details open style="margin-top:10px"><summary style="font-size:16px">Read instead</summary>' +
       '<p style="font-size:17px;line-height:1.55">' + esc(s.narration) + '</p></details>' +
       '</div>'
     );
