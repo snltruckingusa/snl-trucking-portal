@@ -539,3 +539,22 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS calendar_events_start_idx ON calendar_events (start_date);
+
+-- Safety training (Eric, 2026-11-23): one row per driver per topic.
+-- step = resume position inside the player; answers = the driver's
+-- check answers (JSON); signature = the drawn signature data URL,
+-- stored when the topic is completed; completed_at stays NULL until
+-- the server has verified every check answer and saved a signature.
+CREATE TABLE IF NOT EXISTS training_records (
+  id SERIAL PRIMARY KEY,
+  driver_id INT NOT NULL REFERENCES drivers(id),
+  topic_id TEXT NOT NULL,
+  step INT NOT NULL DEFAULT 0,
+  answers JSONB,
+  signature TEXT,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (driver_id, topic_id)
+);
+CREATE INDEX IF NOT EXISTS training_records_driver_idx ON training_records (driver_id);
