@@ -76,7 +76,7 @@
       <td><%= e.note %></td>
       <td><%= e.created_by_name %></td>
       <td><% if (isAdmin || (myDriverId && e.created_by_driver_id === myDriverId)) { %>
-        <form class="inline" method="POST" action="/calendar/<%= e.id %>/delete" onsubmit="return confirm('Delete this entry?')"><button class="btn small danger" type="submit">Delete</button></form>
+        <form class="inline" method="POST" action="/calendar/<%= e.id %>/delete"><button class="btn small danger" type="submit">Delete</button></form>
       <% } %></td>
     </tr>
     <% }) %>
