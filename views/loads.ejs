@@ -61,7 +61,7 @@
     <div class="groupbox">
       <div class="gb-title">3 — Amounts</div>
       <div class="form-row">
-        <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="0"></div>
+        <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="0"></div><div><label>Return ($)</label><input name="return_fee" type="number" step="0.01" value="0"></div>
         <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="0"></div>
         <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="0"></div>
         <div><label>Detention ($)</label><input name="detention" type="number" step="0.01" value="0"></div>
@@ -237,7 +237,7 @@
     <% var jobDone = (jt === 'in_out_empty') ? (ev && ev.load_in > 0 && ev.empty_out > 0) : (ev && ev.load_out > 0 && ev.pod > 0 && ev.empty_in > 0); %>
     <% if (jobDone) { %><div class="step done"><span class="step-ic">✅</span> <b>Job complete</b></div><% } %>
     <div class="step"><span class="step-ic">$</span> <b>Settlement amount — <%= money(loadTotal(l)) %></b> <span class="notice">From the tickets. The owner approves and confirms at the end.</span>
-      <div class="step-body"><span class="notice">Rate <%= money(l.rate) %> · Prepull <%= money(l.prepull) %> · Reefer <%= money(l.reefer) %> · Detention <%= money(l.detention) %><% if (l.detention_status === 'pending') { %> (pending)<% } %> · Overweight <%= money(l.overweight) %> · FSC <%= money(l.fsc) %></span></div>
+      <div class="step-body"><span class="notice">Rate <%= money(l.rate) %> · Return <%= money(l.return_fee) %> · Prepull <%= money(l.prepull) %> · Reefer <%= money(l.reefer) %> · Detention <%= money(l.detention) %><% if (l.detention_status === 'pending') { %> (pending)<% } %> · Overweight <%= money(l.overweight) %> · FSC <%= money(l.fsc) %></span></div>
     </div>
     <details class="step extra">
       <summary><span class="step-ic">+</span> <b>Detention claim</b> <span class="notice">Only with the dispatcher's confirmation message</span></summary>
@@ -350,7 +350,7 @@
             </div>
             <div class="groupbox">
               <div class="gb-title">3 — Amounts</div>
-              <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="<%= l.rate %>"></div>
+              <div><label>Rate ($)</label><input name="rate" type="number" step="0.01" value="<%= l.rate %>"></div><div><label>Return ($)</label><input name="return_fee" type="number" step="0.01" value="<%= l.return_fee || 0 %>"></div>
               <div><label>Prepull ($)</label><input name="prepull" type="number" step="0.01" value="<%= l.prepull %>"></div>
               <div><label>Yard fee ($)</label><input name="yard_fee" type="number" step="0.01" value="<%= l.yard_fee || 0 %>"></div>
               <div><label>Reefer ($)</label><input name="reefer" type="number" step="0.01" value="<%= l.reefer %>"></div>
