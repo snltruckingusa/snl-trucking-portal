@@ -310,7 +310,7 @@ async function weekClosed(driverId, dateISO) {
   return r.rows.length > 0 && r.rows[0].status === 'closed';
 }
 
-const LOG_FIELDS = ['load_date', 'job_type', 'truck_number', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'prepull',
+const LOG_FIELDS = ['load_date', 'job_type', 'truck_number', 'container_no', 'empty_container', 'empty_pin', 'load_pin', 'bol_ref', 'delivery', 'rate', 'return_fee', 'prepull',
   'reefer', 'detention', 'overweight', 'fsc', 'miles', 'status', 'yard_fee'];
 const MONEY_FIELDS = ['rate', 'prepull', 'reefer', 'detention', 'overweight', 'fsc'];
 
@@ -539,13 +539,13 @@ router.post('/', requireLogin, async (req, res) => {
   if (!truck_number) truck_number = await defaultTruck(driver_id);
   const ins = await query(
     `INSERT INTO loads (driver_id, load_date, container_no, bol_ref, pickup, delivery,
-       appointment, rate, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin, job_type, truck_number)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id`,
+       appointment, rate, return_fee, prepull, reefer, detention, detention_status, overweight, fsc, miles, status, ticket_photo, notes, empty_container, dispatch_ok, tickets_ok, empty_pin, load_pin, job_type, truck_number)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING id`,
     [driver_id, req.body.load_date, (req.body.container_no || '').trim() || null,
      (req.body.bol_ref || '').trim() || null, (req.body.pickup || '').trim() || null,
      delivery,
      appointment && !isNaN(appointment) ? appointment : null,
-     rate, num(req.body.prepull), num(req.body.reefer), detentionAmt, detentionStatus,
+     rate, num(req.body.return_fee), num(req.body.prepull), num(req.body.reefer), detentionAmt, detentionStatus,
      num(req.body.overweight), fsc,
      miles, finalStatus,
      req.body.ticket_photo || null, (req.body.notes || '').trim() || null,
@@ -589,7 +589,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
     load_pin: (req.body.load_pin || '').trim() || null,
     bol_ref: (req.body.bol_ref || '').trim() || null,
     delivery: (req.body.delivery || '').trim() || null,
-    rate: num(req.body.rate), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
+    rate: num(req.body.rate), return_fee: num(req.body.return_fee), prepull: num(req.body.prepull), reefer: num(req.body.reefer),
     detention: num(req.body.detention), overweight: num(req.body.overweight),
     fsc: num(req.body.fsc), miles: num(req.body.miles),
     truck_number: req.body.truck_number !== undefined ? (normTruck(req.body.truck_number) || old.truck_number) : (old.truck_number || null),
@@ -625,16 +625,16 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
   const flagsOk = !scope && status === 'confirmed';
   await query(
     `UPDATE loads SET load_date=$1, container_no=$2, bol_ref=$3, pickup=$4, delivery=$5,
-       appointment=$6, rate=$7, prepull=$8, reefer=$9, detention=$10, detention_status=$11,
-       overweight=$12, fsc=$13, miles=$14, status=$15, notes=$16, empty_container=$17,
-       dispatch_ok = CASE WHEN $18 THEN TRUE ELSE dispatch_ok END,
-       tickets_ok = CASE WHEN $18 THEN TRUE ELSE tickets_ok END,
-       empty_pin=$20, load_pin=$21, job_type=$22, yard_fee=$23, truck_number=$24
+       appointment=$6, rate=$7, return_fee=$8, prepull=$9, reefer=$10, detention=$11, detention_status=$12,
+       overweight=$13, fsc=$14, miles=$15, status=$16, notes=$17, empty_container=$18,
+       dispatch_ok = CASE WHEN $19 THEN TRUE ELSE dispatch_ok END,
+       tickets_ok = CASE WHEN $19 THEN TRUE ELSE tickets_ok END,
+       empty_pin=$21, load_pin=$22, job_type=$23, yard_fee=$24, truck_number=$25
      WHERE id=$19`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
      appointment && !isNaN(appointment) ? appointment : null,
-     newVals.rate, newVals.prepull, newVals.reefer, newVals.detention, detentionStatus,
+     newVals.rate, newVals.return_fee, newVals.prepull, newVals.reefer, newVals.detention, detentionStatus,
      newVals.overweight, newVals.fsc,
      newVals.miles, status,
      (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
