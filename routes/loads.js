@@ -630,7 +630,7 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
        dispatch_ok = CASE WHEN $19 THEN TRUE ELSE dispatch_ok END,
        tickets_ok = CASE WHEN $19 THEN TRUE ELSE tickets_ok END,
        empty_pin=$21, load_pin=$22, job_type=$23, yard_fee=$24, truck_number=$25
-     WHERE id=$19`,
+     WHERE id=$20`,
     [newVals.load_date, newVals.container_no, newVals.bol_ref,
      (req.body.pickup || '').trim() || null, newVals.delivery,
      appointment && !isNaN(appointment) ? appointment : null,
