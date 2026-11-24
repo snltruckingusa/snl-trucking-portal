@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Fuel' }) %>
 <h1>Fuel</h1>
-<p class="notice">Cost = <b>gallons × TCS discounted price</b>.</p>
+<p class="notice">TCS $/gal = <b>Total $ / gallons</b>.</p>
 
 <div class="card">
   <h2>Add fuel</h2>
@@ -20,7 +20,7 @@
       <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
       <div><label>Gallons</label><input name="gallons" type="number" step="0.01" required placeholder="100"></div>
       <div><label>Pump $/gal</label><input name="pump_price" type="number" step="0.001" placeholder="3.899"></div>
-      <div><label>TCS $/gal</label><input name="tcs_price" type="number" step="0.001" required placeholder="3.499"></div>
+      <div><label>Total $</label><input name="cost" type="number" step="0.01" inputmode="decimal" required placeholder="349.90"></div>
     </div>
     <div style="margin-top:12px"><button type="submit">Save fuel</button></div>
   </form>
