@@ -75,7 +75,7 @@
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
       <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
-      <td><% if ((doc.mime_type || '').indexOf('pdf') !== -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a> <% } %><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
+      <td><% if ((doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a> <% } %><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
     </tr>
     <% }) %>
   </table></div>
@@ -175,7 +175,7 @@
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
       <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
       <td>
-        <% if ((doc.mime_type || '').indexOf('pdf') !== -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %>
+        <% if ((doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %>
         <% if (doc.status === 'pending') { %><form class="inline" method="POST" action="/documents/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form><% } %>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/duplicate"><button class="btn small" type="submit"><%= doc.is_duplicate ? 'Unmark duplicate' : 'Mark duplicate' %></button></form>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form>
