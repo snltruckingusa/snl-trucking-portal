@@ -71,13 +71,13 @@
 <p>No confirmed loads this week.</p>
 <% } else { %>
 <table>
-  <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Rate</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
+  <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Rate</th><th class="num">Return</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
   <% r.loads.forEach(function(l){ %>
   <tr>
     <td><%= fmtDate(l.load_date) %></td>
     <td><%= l.container_no || '' %></td>
     <td><%= l.delivery || '' %></td>
-    <td class="num"><%= money(l.rate) %></td>
+    <td class="num"><%= money(l.rate) %></td><td class="num"><%= money(l.return_fee) %></td>
     <td class="num"><%= money(l.prepull) %></td>
     <td class="num"><%= money(l.reefer) %></td>
     <td class="num"><%= money(l.detention) %><% if (l.detention_status === 'pending') { %><br><small>pending (not counted)</small><% } else if (l.detention_status === 'rejected') { %><br><small>rejected (not counted)</small><% } %></td>
@@ -89,7 +89,7 @@
   <tr>
     <td colspan="3"><b>Total</b></td>
     <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.rate); }, 0)) %></b></td>
-    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.prepull); }, 0)) %></b></td>
+    <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.return_fee || 0); }, 0)) %></b></td><td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.prepull); }, 0)) %></b></td>
     <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.reefer); }, 0)) %></b></td>
     <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + ((l.detention_status === 'pending' || l.detention_status === 'rejected') ? 0 : Number(l.detention)); }, 0)) %></b></td>
     <td class="num"><b><%= money(r.loads.reduce(function(s,l){ return s + Number(l.overweight); }, 0)) %></b></td>
