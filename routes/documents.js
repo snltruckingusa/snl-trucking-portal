@@ -283,6 +283,9 @@ router.post('/:id/sign', requireLogin, async (req, res) => {
     const got = await docBytesForUser(req, req.params.id);
     if (!got) return res.redirect('/documents');
     doc = got.doc;
+    if (doc.signed_by || (doc.original_name || '').indexOf('(signed') !== -1) {
+      return res.redirect('/documents' + (isAdmin(req) ? '?driver_id=' + doc.driver_id + '&' : '?') + 'notice=' + encodeURIComponent('This document is already signed.'));
+    }
     const sig = String(req.body.sig || '');
     if (!sig.startsWith('data:image/png;base64,')) throw new Error('no signature');
     const pageNo = Math.max(1, parseInt(req.body.page, 10) || 1);
