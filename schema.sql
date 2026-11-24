@@ -558,3 +558,9 @@ CREATE TABLE IF NOT EXISTS training_records (
   UNIQUE (driver_id, topic_id)
 );
 CREATE INDEX IF NOT EXISTS training_records_driver_idx ON training_records (driver_id);
+
+
+-- Return fee (2026-11-24): split out of prepull to mirror the Excel load sheet
+-- (Rate | Return | P/P | Reefer | Detention | O/W | FSC | Total). Defaults to 0,
+-- so existing loads and totals do not move.
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS return_fee NUMERIC(10,2) NOT NULL DEFAULT 0;
