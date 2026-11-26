@@ -14,7 +14,7 @@
 // Sun–Sat week, a cost donut by driver (or by truck with ?view=truck),
 // summary cards, and a breakdown whose rows drill into the filtered
 // list for that driver/truck and week. Under the breakdown, the week's
-// individual entries are listed too ("This week's entries", oldest
+// individual entries are listed too ("This week's entries", newest
 // first) so whoever is entering fuel can spot duplicates or missing
 // rows without leaving the dashboard (Eric, 2026-11-26). The original
 // flat list (From/To/Driver/Truck filters + Delete) is unchanged and
@@ -175,7 +175,7 @@ router.get('/', requireLogin, async (req, res) => {
       avgPrice: totalGallons > 0 ? Math.round((totalCost / totalGallons) * 10000) / 10000 : null,
       entries: r.rows.length,
     };
-    // The week's individual entries, oldest first, for the table under
+    // The week's individual entries, newest first, for the table under
     // the breakdown. Same conditions (and driver scoping) as the
     // aggregate query above, so a logged-in driver sees only their own
     // rows here too; admins/CPA see all.
@@ -183,7 +183,7 @@ router.get('/', requireLogin, async (req, res) => {
       `SELECT f.*, d.name AS driver_name, d.truck_number AS driver_truck FROM fuel f
        JOIN drivers d ON d.id = f.driver_id
        WHERE ${conditions.join(' AND ')}
-       ORDER BY f.fuel_date ASC, d.name ASC, f.id ASC`,
+       ORDER BY f.fuel_date DESC, f.id DESC`,
       params
     )).rows;
     return res.render('fuel', {
