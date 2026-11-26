@@ -127,6 +127,37 @@
   </table></div>
   <p class="notice">Open a <%= viewMode === 'truck' ? 'truck' : 'driver' %> for the entry-by-entry list (with Delete).</p>
 </div>
+
+<div class="card">
+  <h2>This week's entries</h2>
+  <% if (weekRows.length) { %>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Driver</th><th>Truck</th><th class="num">Gallons</th><th class="num">TCS $/gal</th><th class="num">Cost</th><th></th></tr>
+    <% weekRows.forEach(function(f){ %>
+    <tr>
+      <td><%= fmtDate(f.fuel_date) %></td>
+      <td><%= f.driver_name %></td>
+      <td>#<%= f.truck_number || f.driver_truck || '' %></td>
+      <td class="num"><%= f.gallons %></td>
+      <td class="num"><%= f.tcs_price %></td>
+      <td class="num"><%= money(f.cost) %></td>
+      <td>
+        <form class="inline" method="POST" action="/fuel/<%= f.id %>/delete" onsubmit="return confirm('Delete this record?')"><button class="btn small danger" type="submit">Delete</button></form>
+      </td>
+    </tr>
+    <% }) %>
+    <tr>
+      <td colspan="3"><b>Week total</b></td>
+      <td class="num"><b><%= cards.totalGallons.toFixed(2) %></b></td>
+      <td></td>
+      <td class="num"><b><%= money(cards.totalCost) %></b></td>
+      <td></td>
+    </tr>
+  </table></div>
+  <% } else { %>
+  <p class="notice">No fuel recorded this week.</p>
+  <% } %>
+</div>
 <% } %>
 
 <% if (mode === 'list') { %>
