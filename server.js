@@ -72,7 +72,7 @@ app.use((req, res, next) => {
 });
 
 // CPA accounts (the company's accountant) are fenced to the read-only
-// accounting sections: his overview, Settlement, Invoice and Fuel —
+// accounting sections: his overview, Settlement, Invoice, A/R, A/P and Fuel —
 // GET requests only, so no write of any kind can pass, and driver
 // files / personal documents stay out of reach entirely.
 app.use((req, res, next) => {
@@ -83,6 +83,8 @@ app.use((req, res, next) => {
       req.path === '/cpa' || req.path.startsWith('/cpa/')
       || req.path === '/settlement' || req.path.startsWith('/settlement/')
       || req.path === '/invoice' || req.path.startsWith('/invoice/')
+      || req.path === '/ar' || req.path.startsWith('/ar/')
+      || req.path === '/ap' || req.path.startsWith('/ap/')
       || req.path === '/fuel' || req.path.startsWith('/fuel/')
       || req.path === '/bizdocs' || req.path.startsWith('/bizdocs/')
     || req.path === '/ledger' || req.path.startsWith('/ledger/'));
@@ -103,6 +105,8 @@ app.use('/fuel', require('./routes/fuel'));
 app.use('/receipts', require('./routes/receipts'));
 app.use('/settlement', require('./routes/settlement'));
 app.use('/invoice', require('./routes/invoice'));
+app.use('/ar', require('./routes/ar'));
+app.use('/ap', require('./routes/ap'));
 app.use('/documents', require('./routes/documents'));
 app.use('/dvir', require('./routes/dvir'));
 app.use('/mytruck', require('./routes/mytruck'));
