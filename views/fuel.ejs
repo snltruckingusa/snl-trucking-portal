@@ -32,7 +32,7 @@
   var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); });
 %>
 <%- include('partials/header', { title: 'Fuel' }) %>
-<h1>Fuel</h1>
+<h1>Fuel</h1><% if (mode === 'list') { %>
 <p class="notice">TCS $/gal = <b>Total $ / gallons</b> — calculated automatically when you save. Enter the Total $ exactly as paid; it is stored as-is.</p>
 
 <div class="card">
@@ -59,7 +59,7 @@
     <div style="margin-top:12px"><button type="submit">Save fuel</button></div>
   </form>
 </div>
-
+<% } %>
 <% if (mode === 'dashboard') { %>
 <div class="card">
   <form method="GET" action="/fuel" class="form-row" style="align-items:end">
@@ -126,6 +126,33 @@
     <% if (!breakdown.length) { %><tr><td colspan="5" class="notice">No fuel recorded this week.</td></tr><% } %>
   </table></div>
   <p class="notice">Open a <%= viewMode === 'truck' ? 'truck' : 'driver' %> for the entry-by-entry list (with Delete).</p>
+</div>
+
+<p class="notice">TCS $/gal = <b>Total $ / gallons</b> — calculated automatically when you save. Enter the Total $ exactly as paid; it is stored as-is.</p>
+
+<div class="card">
+  <h2>Add fuel</h2>
+  <form method="POST" action="/fuel">
+    <div class="form-row">
+      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
+      <% if (isAdmin) { %>
+      <div><label>Driver</label><select name="driver_id" id="fuel-driver" required>
+        <option value="" selected>-- Select driver --</option>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+      </select></div>
+      <% } else { %>
+      <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
+      <% } %>
+      <div><label>Truck</label><select name="truck_number" id="fuel-truck"<% if (isAdmin) { %> required<% } %>>
+        <% if (isAdmin) { %><option value="" selected>-- Select truck # --</option><% } %>
+        <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === myTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
+      </select></div>
+      <div><label>Total $</label><input name="cost" id="fuel-cost" type="number" step="0.01" inputmode="decimal" required placeholder="349.90"></div>
+      <div><label>Gallons</label><input name="gallons" id="fuel-gallons" type="number" step="0.01" required placeholder="100"></div>
+      <div><label>TCS $/gal (auto)</label><input id="fuel-tcs" type="text" readonly tabindex="-1" placeholder="—"></div>
+    </div>
+    <div style="margin-top:12px"><button type="submit">Save fuel</button></div>
+  </form>
 </div>
 
 <div class="card">
