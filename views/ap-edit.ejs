@@ -1,0 +1,39 @@
+<%# A/P item edit page: the form (shared fields partial), the item's
+    payment history, and delete (only while no payments exist). %>
+<%- include('partials/header', { title: 'A/P Item' }) %>
+<h1>Edit payable</h1>
+<p><a href="/ap">← Back to A/P</a></p>
+
+<div class="card">
+  <form method="POST" action="/ap/items/<%= item.id %>/edit">
+    <%- include('partials/ap-item-fields', { item: item, drivers: drivers, baskets: baskets, basketLabels: basketLabels, cadences: cadences, methods: methods, showActive: true }) %>
+    <p class="notice" style="margin-top:8px">Next due: <b><%= item.next_due || '—' %></b>. The due date is recomputed only when the cadence / due fields change — renaming or repricing an item never moves it.</p>
+    <div style="margin-top:10px"><button type="submit">Save</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Payment history</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Paid on</th><th class="num">Amount</th><th>Method</th><th>Note</th></tr>
+    <% payments.forEach(function (p) { %>
+    <tr>
+      <td><%= fmtDate(p.paid_on) %></td>
+      <td class="num"><%= money(p.amount) %></td>
+      <td><%= p.method || '' %></td>
+      <td><%= p.note || '' %></td>
+    </tr>
+    <% }) %>
+    <% if (!payments.length) { %><tr><td colspan="4" class="notice">No payments recorded yet.</td></tr><% } %>
+  </table></div>
+</div>
+
+<% if (canWrite && !payments.length) { %>
+<div class="card">
+  <form method="POST" action="/ap/items/<%= item.id %>/delete" onsubmit="return confirm('Delete this payable?')">
+    <button class="btn secondary" type="submit">Delete this payable</button>
+    <span class="notice">Available only while the item has no payment history.</span>
+  </form>
+</div>
+<% } %>
+<%- include('partials/footer') %>

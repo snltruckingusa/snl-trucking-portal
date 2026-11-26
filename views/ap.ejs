@@ -1,0 +1,95 @@
+<%# A/P home: this month's scheduled money out, basket cards, the
+    upcoming & overdue list (with Mark paid), all items by basket,
+    and the add-item form. CPA sees everything read-only. %>
+<%
+  function statusBadge(st) {
+    if (st.key === 'overdue') return '<span class="badge flag">' + st.label + '</span>';
+    if (st.key === 'today') return '<span class="badge warn">' + st.label + '</span>';
+    if (st.key === 'nodate') return '<span class="badge open">' + st.label + '</span>';
+    return '<span class="badge progress">' + st.label + '</span>';
+  }
+  function cadenceLabel(it) {
+    var s = it.cadence;
+    if (it.autopay) s += ' · autopay' + (it.autopay_day ? ' (' + it.autopay_day + ')' : '');
+    return s;
+  }
+%>
+<%- include('partials/header', { title: 'A/P' }) %>
+<h1>A/P — Accounts Payable</h1>
+<p class="notice">Money out, in named baskets. Inside <b>Drivers</b>, company-paid items (Occ/Acc, parking — the company pays, the driver is never charged) stay separate from amounts recovered from driver pay (fuel / insurance — that recovery is calculated in Settlement; A/P only records it). Marking an item paid rolls its next due date forward one period.</p>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+  <div class="card" style="flex:1;min-width:160px;text-align:center;margin:0">
+    <div class="notice">Scheduled out — <%= monthLabel %></div>
+    <div style="font-size:22px"><b><%= money(totalMonthOut) %></b></div>
+  </div>
+  <% basketCards.forEach(function (c) { %>
+  <div class="card" style="flex:1;min-width:140px;text-align:center;margin:0<% if (c.overdue > 0) { %>;border-color:#d9534f<% } %>">
+    <div class="notice"><%= c.label %></div>
+    <div style="font-size:18px"><b><%= money(c.monthOut) %></b></div>
+    <div class="notice"><%= c.count %> active<% if (c.overdue > 0) { %> · <b style="color:#d9534f"><%= c.overdue %> overdue</b><% } %></div>
+  </div>
+  <% }) %>
+</div>
+
+<div class="card">
+  <h2>Upcoming &amp; overdue</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Item</th><th>Basket</th><th>Driver</th><th class="num">Amount</th><th>Due</th><th>Status</th><th>Method</th><% if (canWrite) { %><th>Mark paid</th><% } %><th></th></tr>
+    <% upcoming.forEach(function (it) { %>
+    <tr>
+      <td><b><%= it.name %></b><% if (it.note) { %> <span class="notice"><%= it.note %></span><% } %></td>
+      <td><%= basketLabels[it.basket] %></td>
+      <td><%= it.driver_name || '' %></td>
+      <td class="num"><%= money(it.amount) %></td>
+      <td><%= it.nextDueISO || '—' %></td>
+      <td><%- statusBadge(it.status) %></td>
+      <td><%= it.method || '' %><% if (it.autopay) { %> <span class="notice">(autopay)</span><% } %></td>
+      <% if (canWrite) { %>
+      <td>
+        <form method="POST" action="/ap/items/<%= it.id %>/pay" class="form-row" style="gap:4px">
+          <input type="number" name="amount" step="0.01" min="0" value="<%= it.amount %>" style="width:90px">
+          <input type="date" name="paid_on" value="<%= todayISO %>" style="width:140px">
+          <button class="btn small" type="submit">Mark paid</button>
+        </form>
+      </td>
+      <% } %>
+      <td class="num"><% if (canWrite) { %><a href="/ap/items/<%= it.id %>/edit">Edit →</a><% } %></td>
+    </tr>
+    <% }) %>
+    <% if (!upcoming.length) { %><tr><td colspan="<%= canWrite ? 9 : 7 %>" class="notice">No active payables yet. Add the first one below.</td></tr><% } %>
+  </table></div>
+  <p class="notice">Sorted by next due date — overdue first. A weekly item counts each of its weekdays inside this month's total; monthly counts once; quarterly / annual / one-off count when their due date falls in the month.</p>
+</div>
+
+<% groups.forEach(function (g) { %>
+<div class="card">
+  <h2><%= g.label %></h2>
+  <% if (g.key === 'drivers') { %>
+    <h3 style="margin-top:4px">Company-paid (Occ/Acc, parking, …)</h3>
+    <%- include('partials/ap-items-table', { rows: g.company, canWrite: canWrite }) %>
+    <h3>Recovered from driver pay (fuel / insurance — settled in Settlement)</h3>
+    <%- include('partials/ap-items-table', { rows: g.recovery, canWrite: canWrite }) %>
+  <% } else { %>
+    <%- include('partials/ap-items-table', { rows: g.items, canWrite: canWrite }) %>
+  <% } %>
+</div>
+<% }) %>
+
+<% if (canWrite) { %>
+<div class="card">
+  <h2>Add a payable</h2>
+  <form method="POST" action="/ap/items">
+    <%- include('partials/ap-item-fields', { item: {}, drivers: drivers, baskets: baskets, basketLabels: basketLabels, cadences: cadences, methods: methods, showActive: false }) %>
+    <div style="margin-top:10px"><button type="submit">Add payable</button></div>
+  </form>
+</div>
+<% } %>
+
+<% if (inactive.length) { %>
+<div class="card">
+  <h2>Completed / inactive</h2>
+  <p class="notice"><% inactive.forEach(function (it) { %><%= it.name %> (<%= basketLabels[it.basket] %>)<% if (canWrite) { %> — <a href="/ap/items/<%= it.id %>/edit">open</a><% } %> &nbsp; <% }) %></p>
+</div>
+<% } %>
+<%- include('partials/footer') %>
