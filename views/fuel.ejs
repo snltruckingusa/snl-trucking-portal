@@ -1,33 +1,138 @@
+<%# Fuel: weekly briefing home (default), or the original filtered
+    flat list when a from/to key is in the query (mode === 'list').
+    The list table and Delete forms below are the original ones —
+    only the home dashboard and the Add-fuel form layout are new. %>
+<%
+  // Server-rendered donut (inline SVG, pathLength=100 segments) —
+  // same helper shape as the invoice home.
+  // centerValue must be pre-formatted by the caller (e.g. money(x)).
+  function donutHTML(donut, size, centerLabel, centerValue) {
+    var sw = size > 120 ? 13 : 15;
+    var h = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 120 120" role="img">';
+    h += '<circle cx="60" cy="60" r="50" fill="none" stroke="#e3e6ea" stroke-width="' + sw + '"/>';
+    if (donut) {
+      h += '<g transform="rotate(-90 60 60)" fill="none" stroke-width="' + sw + '">';
+      donut.slices.forEach(function (s) {
+        if (s.pct > 0) {
+          h += '<circle cx="60" cy="60" r="50" pathLength="100" stroke="' + s.color
+             + '" stroke-dasharray="' + s.pct + ' ' + (100 - s.pct)
+             + '" stroke-dashoffset="' + s.offset + '"/>';
+        }
+      });
+      h += '</g>';
+    }
+    if (centerLabel) {
+      h += '<text x="60" y="54" text-anchor="middle" font-size="10" fill="#888">' + centerLabel + '</text>';
+    }
+    h += '<text x="60" y="' + (centerLabel ? 74 : 67) + '" text-anchor="middle" font-size="'
+       + (size > 120 ? 17 : 14) + '" font-weight="700" fill="#333">' + centerValue + '</text>';
+    h += '</svg>';
+    return h;
+  }
+  var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); });
+%>
 <%- include('partials/header', { title: 'Fuel' }) %>
 <h1>Fuel</h1>
-<p class="notice">TCS $/gal = <b>Total $ / gallons</b>.</p>
+<p class="notice">TCS $/gal = <b>Total $ / gallons</b> — calculated automatically when you save. Enter the Total $ exactly as paid; it is stored as-is.</p>
 
 <div class="card">
   <h2>Add fuel</h2>
   <form method="POST" action="/fuel">
     <div class="form-row">
+      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
       <% if (isAdmin) { %>
       <div><label>Driver</label><select name="driver_id" id="fuel-driver" required>
+        <option value="" selected>-- Select driver --</option>
         <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>"><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
       </select></div>
       <% } else { %>
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
-      <% var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); }); %>
-      <div><label>Truck</label><select name="truck_number" id="fuel-truck">
+      <div><label>Truck</label><select name="truck_number" id="fuel-truck"<% if (isAdmin) { %> required<% } %>>
+        <% if (isAdmin) { %><option value="" selected>-- Select truck # --</option><% } %>
         <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === myTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
       </select></div>
-      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(new Date()) %>"></div>
-      <div><label>Gallons</label><input name="gallons" type="number" step="0.01" required placeholder="100"></div>
-      <div><label>Pump $/gal</label><input name="pump_price" type="number" step="0.001" placeholder="3.899"></div>
-      <div><label>Total $</label><input name="cost" type="number" step="0.01" inputmode="decimal" required placeholder="349.90"></div>
+      <div><label>Total $</label><input name="cost" id="fuel-cost" type="number" step="0.01" inputmode="decimal" required placeholder="349.90"></div>
+      <div><label>Gallons</label><input name="gallons" id="fuel-gallons" type="number" step="0.01" required placeholder="100"></div>
+      <div><label>TCS $/gal (auto)</label><input id="fuel-tcs" type="text" readonly tabindex="-1" placeholder="—"></div>
     </div>
     <div style="margin-top:12px"><button type="submit">Save fuel</button></div>
   </form>
 </div>
 
+<% if (mode === 'dashboard') { %>
+<div class="card">
+  <form method="GET" action="/fuel" class="form-row" style="align-items:end">
+    <div><label>Week of (Sun)</label><input type="date" name="week" value="<%= weekISO %>"></div>
+    <input type="hidden" name="view" value="<%= viewMode %>">
+    <div><button type="submit">View</button>
+      <a class="btn secondary" href="/fuel?week=<%= prevWeek %>&view=<%= viewMode %>">← Prev week</a>
+      <a class="btn secondary" href="/fuel?week=<%= nextWeek %>&view=<%= viewMode %>">Next week →</a></div>
+  </form>
+  <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b> ·
+  <% if (viewMode === 'driver') { %>By driver · <a href="/fuel?week=<%= weekISO %>&view=truck">View by truck</a><% } else { %>By truck · <a href="/fuel?week=<%= weekISO %>&view=driver">View by driver</a><% } %>
+  · <a href="/fuel?from=<%= weekISO %>&to=<%= weekEndISO %>">All entries this week (list)</a></p>
+</div>
+
+<div class="card">
+  <h2>Week at a glance</h2>
+  <div style="text-align:center">
+    <%- donutHTML(donut, 158, 'Week total', donut ? money(donut.total) : '—') %>
+  </div>
+  <% if (donut) { %>
+  <p style="text-align:center;margin-top:10px">
+    <% donut.slices.forEach(function (s) { %>
+    <span style="margin:0 8px;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:<%= s.color %>"></span> <%= s.label %> <b><%= money(s.amount) %></b></span>
+    <% }) %>
+  </p>
+  <p class="notice" style="text-align:center">Fuel cost this week, split <%= viewMode === 'truck' ? 'by truck' : 'by driver' %>.</p>
+  <% } else { %>
+  <p class="notice" style="text-align:center">No fuel recorded this week.</p>
+  <% } %>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+  <div class="card" style="flex:1;min-width:140px;text-align:center;margin:0">
+    <div class="notice">Total cost</div>
+    <div style="font-size:20px"><b><%= money(cards.totalCost) %></b></div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center;margin:0">
+    <div class="notice">Total gallons</div>
+    <div style="font-size:20px"><b><%= cards.totalGallons.toFixed(2) %></b></div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center;margin:0">
+    <div class="notice">Avg $/gal</div>
+    <div style="font-size:20px"><b><%= cards.avgPrice === null ? '—' : '$' + cards.avgPrice.toFixed(3) %></b></div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center;margin:0">
+    <div class="notice">Entries</div>
+    <div style="font-size:20px"><b><%= cards.entries %></b></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><%= viewMode === 'truck' ? 'By truck' : 'By driver' %> — this week</h2>
+  <div class="table-wrap"><table>
+    <tr><th><%= viewMode === 'truck' ? 'Truck' : 'Driver' %></th><th class="num">Gallons</th><th class="num">Cost</th><th class="num">Share</th><th></th></tr>
+    <% breakdown.forEach(function (b) { %>
+    <tr>
+      <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:<%= b.color %>;margin-right:6px"></span><a href="<%= b.href %>"><b><%= b.label %></b></a></td>
+      <td class="num"><%= b.gallons.toFixed(2) %></td>
+      <td class="num"><%= money(b.cost) %></td>
+      <td class="num"><%= b.share.toFixed(1) %>%</td>
+      <td class="num"><a href="<%= b.href %>">View →</a></td>
+    </tr>
+    <% }) %>
+    <% if (!breakdown.length) { %><tr><td colspan="5" class="notice">No fuel recorded this week.</td></tr><% } %>
+  </table></div>
+  <p class="notice">Open a <%= viewMode === 'truck' ? 'truck' : 'driver' %> for the entry-by-entry list (with Delete).</p>
+</div>
+<% } %>
+
+<% if (mode === 'list') { %>
 <div class="card">
   <h2>Fuel list</h2>
+  <p><a href="/fuel">← Weekly dashboard</a></p>
   <form method="GET" action="/fuel">
     <div class="form-row">
       <div><label>From</label><input type="date" name="from" value="<%= filters.from %>"></div>
@@ -62,12 +167,37 @@
   </table></div>
   <% if (!fuel.length) { %><p class="notice">No fuel records.</p><% } %>
 </div>
+<% } %>
+
 <script>
 (function(){
   var ds = document.getElementById('fuel-driver'), ts = document.getElementById('fuel-truck');
-  if (!ds || !ts) return;
-  function sync(){ var o = ds.options[ds.selectedIndex]; var t = o ? o.getAttribute('data-truck') : ''; if (!t) return; for (var i = 0; i < ts.options.length; i++) { if (ts.options[i].value === t) { ts.selectedIndex = i; break; } } }
-  ds.addEventListener('change', sync); sync();
+  if (ds && ts) {
+    // Picking a driver pre-fills that driver's current truck (the form
+    // default); clearing back to the placeholder clears the truck too.
+    // The truck can still be changed by hand before saving.
+    function sync(){
+      var o = ds.options[ds.selectedIndex];
+      var t = o ? o.getAttribute('data-truck') : '';
+      if (!t) { ts.selectedIndex = 0; return; }
+      for (var i = 0; i < ts.options.length; i++) { if (ts.options[i].value === t) { ts.selectedIndex = i; break; } }
+    }
+    ds.addEventListener('change', sync); sync();
+  }
+  // Live TCS $/gal preview: Total $ / Gallons, rounded the same way
+  // the server stores it (4 decimals). Display only — the server
+  // recomputes and stores the value on save.
+  var costEl = document.getElementById('fuel-cost'),
+      galEl = document.getElementById('fuel-gallons'),
+      tcsEl = document.getElementById('fuel-tcs');
+  function upd(){
+    if (!tcsEl) return;
+    var c = parseFloat(costEl && costEl.value), g = parseFloat(galEl && galEl.value);
+    tcsEl.value = (c > 0 && g > 0) ? (Math.round((c / g) * 10000) / 10000).toFixed(4) : '';
+  }
+  if (costEl) costEl.addEventListener('input', upd);
+  if (galEl) galEl.addEventListener('input', upd);
+  upd();
 })();
 </script>
 <%- include('partials/footer') %>
