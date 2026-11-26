@@ -13,9 +13,9 @@
   // route has to change. (Frame redesign, Nov 15, 2026.)
   var p = (typeof path !== 'undefined' && path) ? path : '/';
   var sec = 'home', subs = [], top = [];
-  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', calendar: '/calendar', training: '/training', settlement: '/settlement', invoice: '/invoice', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck', cpa: '/cpa', fuel: '/fuel' };
+  var topHref = { home: '/', drivers: '/drivers', loads: '/loads', calendar: '/calendar', training: '/training', settlement: '/settlement', invoice: '/invoice', ar: '/ar', ap: '/ap', maintenance: '/dvir', audit: '/audit', more: '/more', pay: '/settlement', myfile: '/documents', mytruck: '/mytruck', cpa: '/cpa', fuel: '/fuel' };
   if (user && user.role === 'admin') {
-    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/training', 'Training'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/cpa', 'CPA'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
+    top = [ ['/', 'Home'], ['/drivers', 'Drivers'], ['/loads', 'Loads'], ['/calendar', 'Calendar'], ['/training', 'Training'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/ar', 'A/R'], ['/ap', 'A/P'], ['/cpa', 'CPA'], ['/dvir', 'Maintenance'], ['/audit', 'Audit'], ['/more', 'More'] ];
     if (p === '/') { sec = 'home'; subs = [ ['/', 'Dashboard'] ]; }
     else if (p.startsWith('/drivers') || p.startsWith('/documents') || p.startsWith('/users')) { sec = 'drivers'; subs = [ ['/drivers', 'All Drivers'], ['/drivers/overview', 'Driver Overview'], ['/documents', 'Documents Review'], ['/users', 'Logins'] ]; }
     else if (p.startsWith('/loads') || p.startsWith('/fuel') || p.startsWith('/receipts')) { sec = 'loads'; subs = [ ['/loads', 'Loads'], ['/fuel', 'Fuel'], ['/receipts', 'Receipts'] ]; }
@@ -23,6 +23,8 @@
     else if (p.startsWith('/training')) { sec = 'training'; subs = [ ['/training', 'Safety Training'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
+    else if (p.startsWith('/ar')) { sec = 'ar'; subs = [ ['/ar', 'Receivables'] ]; }
+    else if (p.startsWith('/ap')) { sec = 'ap'; subs = [ ['/ap', 'Payables'] ]; }
     else if (p.startsWith('/cpa') || p.startsWith('/bizdocs') || p.startsWith('/ledger')) { sec = 'cpa'; subs = [ ['/cpa', 'CPA Overview'], ['/bizdocs', 'Business Documents'], ['/ledger', 'Ledger'] ]; }
     else if (p.startsWith('/audit') || p.startsWith('/issued')) { sec = 'audit'; subs = [ ['/audit', 'DQF & Vehicle Audit'], ['/issued', 'Issued Items'] ]; }
     else if (p.startsWith('/dvir') || p.startsWith('/mytruck')) { sec = 'maintenance'; subs = [ ['/dvir', 'Repairs & Inspections'], ['/mytruck', 'Vehicle Register'] ]; }
@@ -40,10 +42,12 @@
   } else if (user && user.role === 'cpa') {
     // CPA frame: accounting sections only, all read-only (the server
     // middleware fences the role to GETs on these paths).
-    top = [ ['/cpa', 'CPA Home'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/fuel', 'Fuel'], ['/bizdocs', 'Documents'] ];
+    top = [ ['/cpa', 'CPA Home'], ['/settlement', 'Settlement'], ['/invoice', 'Invoice'], ['/ar', 'A/R'], ['/ap', 'A/P'], ['/fuel', 'Fuel'], ['/bizdocs', 'Documents'] ];
     if (p.startsWith('/bizdocs') || p.startsWith('/ledger')) { sec = 'cpa'; subs = [ ['/bizdocs', 'Business Documents'], ['/ledger', 'Ledger'] ]; }
     else if (p.startsWith('/settlement')) { sec = 'settlement'; subs = [ ['/settlement', 'Weekly Settlement'], ['/settlement/mpg', 'MPG Report'] ]; }
     else if (p.startsWith('/invoice')) { sec = 'invoice'; subs = [ ['/invoice', 'Weekly Claim'] ]; }
+    else if (p.startsWith('/ar')) { sec = 'ar'; subs = [ ['/ar', 'Receivables'] ]; }
+    else if (p.startsWith('/ap')) { sec = 'ap'; subs = [ ['/ap', 'Payables'] ]; }
     else if (p.startsWith('/fuel')) { sec = 'fuel'; subs = [ ['/fuel', 'Fuel'] ]; }
     else { sec = 'cpa'; subs = [ ['/cpa', 'Overview'] ]; }
   }

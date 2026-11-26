@@ -1,0 +1,54 @@
+<%#
+  Shared A/P item form fields — used by the Add form on /ap and the
+  Edit page. Expects: item (object, may be {}), drivers, baskets,
+  basketLabels, cadences, methods, showActive (bool).
+%>
+<%
+  var it = (typeof item !== 'undefined' && item) ? item : {};
+  function sel(cur, val) { return String(cur === undefined || cur === null ? '' : cur) === String(val) ? ' selected' : ''; }
+%>
+<div class="form-row" style="flex-wrap:wrap;gap:10px">
+  <div style="flex:2;min-width:180px"><label>Name *</label>
+    <input type="text" name="name" required value="<%= it.name || '' %>" placeholder="e.g. Occ/Acc — Green"></div>
+  <div><label>Basket</label>
+    <select name="basket">
+      <% baskets.forEach(function (b) { %><option value="<%= b %>"<%= sel(it.basket, b) %>><%= basketLabels[b] %></option><% }) %>
+    </select></div>
+  <div><label>Kind (Drivers basket)</label>
+    <select name="kind">
+      <option value="company"<%= sel(it.kind || 'company', 'company') %>>Company-paid</option>
+      <option value="recovery"<%= sel(it.kind, 'recovery') %>>Recovered from pay</option>
+    </select></div>
+  <div><label>Driver (if any)</label>
+    <select name="driver_id">
+      <option value="">— None —</option>
+      <% drivers.forEach(function (d) { %><option value="<%= d.id %>"<%= sel(it.driver_id, d.id) %>><%= d.name %></option><% }) %>
+    </select></div>
+  <div><label>Amount $</label>
+    <input type="number" name="amount" step="0.01" min="0" value="<%= it.amount === undefined || it.amount === null ? '' : it.amount %>"></div>
+</div>
+<div class="form-row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
+  <div><label>Cadence</label>
+    <select name="cadence">
+      <% cadences.forEach(function (c) { %><option value="<%= c %>"<%= sel(it.cadence || 'monthly', c) %>><%= c %></option><% }) %>
+    </select></div>
+  <div><label>Due day</label>
+    <input type="number" name="due_day" value="<%= it.due_day === undefined || it.due_day === null ? '' : it.due_day %>">
+    <div class="notice">Weekly: 0=Sun … 6=Sat. Otherwise: day of month.</div></div>
+  <div><label>Due date (one-off / anchor)</label>
+    <input type="date" name="due_date" value="<%= it.due_date || '' %>"></div>
+  <div><label>Method</label>
+    <select name="method">
+      <option value="">—</option>
+      <% methods.forEach(function (m) { %><option value="<%= m %>"<%= sel(it.method, m) %>><%= m %></option><% }) %>
+    </select></div>
+  <div><label><input type="checkbox" name="autopay"<%= it.autopay ? ' checked' : '' %>> Autopay</label>
+    <input type="number" name="autopay_day" min="1" max="31" placeholder="day" value="<%= it.autopay_day === undefined || it.autopay_day === null ? '' : it.autopay_day %>"></div>
+  <% if (typeof showActive !== 'undefined' && showActive) { %>
+  <div><label><input type="checkbox" name="active"<%= it.active ? ' checked' : '' %>> Active</label></div>
+  <% } %>
+</div>
+<div class="form-row" style="margin-top:8px">
+  <div style="flex:1"><label>Note</label>
+    <input type="text" name="note" value="<%= it.note || '' %>"></div>
+</div>

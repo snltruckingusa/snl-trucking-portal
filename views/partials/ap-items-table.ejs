@@ -1,0 +1,17 @@
+<%# Compact items table for the by-basket groups on /ap.
+    Expects: rows (enriched ap_items), canWrite. %>
+<div class="table-wrap"><table>
+  <tr><th>Item</th><th>Driver</th><th class="num">Amount</th><th>Cadence</th><th>Next due</th><th>Method</th><% if (canWrite) { %><th></th><% } %></tr>
+  <% rows.forEach(function (it) { %>
+  <tr>
+    <td><b><%= it.name %></b><% if (it.note) { %> <span class="notice"><%= it.note %></span><% } %></td>
+    <td><%= it.driver_name || '' %></td>
+    <td class="num"><%= money(it.amount) %></td>
+    <td><%= it.cadence %><% if (it.autopay) { %> · autopay<% } %></td>
+    <td><%= it.nextDueISO || '—' %></td>
+    <td><%= it.method || '' %></td>
+    <% if (canWrite) { %><td class="num"><a href="/ap/items/<%= it.id %>/edit">Edit →</a></td><% } %>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="<%= canWrite ? 7 : 6 %>" class="notice">None.</td></tr><% } %>
+</table></div>
