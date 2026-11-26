@@ -13,9 +13,12 @@
 // is a weekly briefing in the invoice-home design language — one
 // Sun–Sat week, a cost donut by driver (or by truck with ?view=truck),
 // summary cards, and a breakdown whose rows drill into the filtered
-// list for that driver/truck and week. The original flat list
-// (From/To/Driver/Truck filters + Delete) is unchanged and renders
-// whenever a from/to key is present in the query.
+// list for that driver/truck and week. Under the breakdown, the week's
+// individual entries are listed too ("This week's entries", oldest
+// first) so whoever is entering fuel can spot duplicates or missing
+// rows without leaving the dashboard (Eric, 2026-11-26). The original
+// flat list (From/To/Driver/Truck filters + Delete) is unchanged and
+// renders whenever a from/to key is present in the query.
 const express = require('express');
 const { query } = require('../db');
 const {
@@ -76,7 +79,7 @@ router.get('/', requireLogin, async (req, res) => {
       drivers, trucks,
       isAdmin: isAdmin(req), scopedDriverId: scope,
       filters: { from: '', to: '', driver_id: '', truck: '' },
-      mode: 'dashboard', fuel: [],
+      mode: 'dashboard', fuel: [], weekRows: [],
       weekISO: '', weekEndISO: '', prevWeek: '', nextWeek: '',
       viewMode: 'driver', donut: null, cards: null, breakdown: [],
     };
@@ -172,11 +175,22 @@ router.get('/', requireLogin, async (req, res) => {
       avgPrice: totalGallons > 0 ? Math.round((totalCost / totalGallons) * 10000) / 10000 : null,
       entries: r.rows.length,
     };
+    // The week's individual entries, oldest first, for the table under
+    // the breakdown. Same conditions (and driver scoping) as the
+    // aggregate query above, so a logged-in driver sees only their own
+    // rows here too; admins/CPA see all.
+    const weekRows = (await query(
+      `SELECT f.*, d.name AS driver_name, d.truck_number AS driver_truck FROM fuel f
+       JOIN drivers d ON d.id = f.driver_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY f.fuel_date ASC, d.name ASC, f.id ASC`,
+      params
+    )).rows;
     return res.render('fuel', {
       ...base, mode: 'dashboard',
       weekISO: wsISO, weekEndISO: weISO,
       prevWeek: toISODate(addDays(wsDate, -7)), nextWeek: toISODate(addDays(wsDate, 7)),
-      viewMode, cards, breakdown,
+      viewMode, cards, breakdown, weekRows,
       donut: donutForBreakdown(breakdown, totalCost),
     });
   } catch (e) {
