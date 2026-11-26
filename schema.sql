@@ -564,3 +564,83 @@ CREATE INDEX IF NOT EXISTS training_records_driver_idx ON training_records (driv
 -- (Rate | Return | P/P | Reefer | Detention | O/W | FSC | Total). Defaults to 0,
 -- so existing loads and totals do not move.
 ALTER TABLE loads ADD COLUMN IF NOT EXISTS return_fee NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+-- A/R + A/P (Eric, 2026-11-26): money IN per customer and money OUT in
+-- named baskets. Brand-new tables only — nothing existing is altered,
+-- and the foreign keys stay inside this new set (ap_items.driver_id is
+-- a plain driver reference by design, no FK). Appended at the very end
+-- of this file so no earlier statement can block these from running.
+CREATE TABLE IF NOT EXISTS ar_customers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  invoice_linked BOOLEAN NOT NULL DEFAULT false,
+  active BOOLEAN NOT NULL DEFAULT true,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Manual claim weeks for customers NOT linked to the invoice system.
+-- (The invoice-linked customer — PierLink — reads its claims live from
+-- invoice_lines; nothing is copied.)
+CREATE TABLE IF NOT EXISTS ar_claims (
+  id SERIAL PRIMARY KEY,
+  customer_id INT NOT NULL REFERENCES ar_customers(id) ON DELETE CASCADE,
+  week_of DATE NOT NULL,
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ar_claims_customer_week_idx ON ar_claims (customer_id, week_of);
+
+-- Weekly remittance matching: one row per announced amount ('listed' —
+-- the customer's weekly deposit list) or per deposit that actually
+-- landed ('received') for one claim week. Rows for a week SUM.
+CREATE TABLE IF NOT EXISTS ar_entries (
+  id SERIAL PRIMARY KEY,
+  customer_id INT NOT NULL REFERENCES ar_customers(id) ON DELETE CASCADE,
+  week_of DATE NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('listed','received')),
+  amount NUMERIC(12,2) NOT NULL,
+  entry_date DATE NOT NULL,
+  method TEXT,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ar_entries_customer_week_idx ON ar_entries (customer_id, week_of, kind);
+
+-- Payables: recurring or one-off money out, in named baskets. Inside
+-- the 'drivers' basket, kind separates 'company' (Occ/Acc, parking —
+-- the company pays, the driver is never charged) from 'recovery'
+-- (fuel / insurance — recovered from driver pay inside Settlement;
+-- A/P never recalculates those, rows here are manual records only).
+-- next_due is maintained by routes/ap.js from cadence + due fields.
+CREATE TABLE IF NOT EXISTS ap_items (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  basket TEXT NOT NULL CHECK (basket IN ('drivers','trucks','taxes','operations')),
+  kind TEXT CHECK (kind IS NULL OR kind IN ('recovery','company')),
+  driver_id INT,
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  cadence TEXT NOT NULL DEFAULT 'monthly' CHECK (cadence IN ('weekly','monthly','quarterly','annual','once')),
+  due_day INT,
+  due_date DATE,
+  autopay BOOLEAN NOT NULL DEFAULT false,
+  autopay_day INT,
+  method TEXT CHECK (method IS NULL OR method IN ('card','zelle','ach','check','cash')),
+  next_due DATE,
+  active BOOLEAN NOT NULL DEFAULT true,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ap_items_next_due_idx ON ap_items (active, next_due);
+
+CREATE TABLE IF NOT EXISTS ap_payments (
+  id SERIAL PRIMARY KEY,
+  ap_item_id INT NOT NULL REFERENCES ap_items(id) ON DELETE CASCADE,
+  paid_on DATE NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  method TEXT,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ap_payments_item_idx ON ap_payments (ap_item_id, paid_on);
