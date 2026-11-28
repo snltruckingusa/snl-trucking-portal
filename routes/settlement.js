@@ -219,11 +219,22 @@ router.get('/', requireLogin, async (req, res) => {
   let wsISO = req.query.week;
   if (!wsISO) wsISO = toISODate(weekStart(new Date()));
   const data = await computeWeek(wsISO, scope || null);
+  // Driver confirmations for this week (2026-11-28) — guarded like
+  // the downtime read in computeWeek: a missing table must never
+  // take the settlement page down.
+  let confirms = {};
+  try {
+    const cf = await query(
+      'SELECT driver_id, confirmed_at, note, note_at FROM settlement_confirms WHERE week_start = $1',
+      [data.weekStartISO]
+    );
+    cf.rows.forEach(function (r) { confirms[r.driver_id] = r; });
+  } catch (e) { confirms = {}; }
   const prevWeek = toISODate(addDays(data.weekStart, -7));
   const nextWeek = toISODate(addDays(data.weekStart, 7));
   res.render('settlement', {
     ...data, prevWeek, nextWeek,
-    isAdmin: isAdmin(req), scopedDriverId: scope,
+    isAdmin: isAdmin(req), scopedDriverId: scope, confirms,
   });
 });
 
@@ -288,6 +299,47 @@ router.post('/weekend-unconfirm', requireLogin, requireAdmin, async (req, res) =
     [week, parseInt(driver_id, 10)]
   );
   res.redirect('/settlement?week=' + week);
+});
+
+// Driver settlement confirmation (2026-11-28): the driver reviews
+// his own week in the portal and confirms it here — this replaces
+// the old send-the-invoice-and-ask flow. A question note clears the
+// confirmation until the driver confirms again. Driver-scoped only:
+// an admin cannot confirm on a driver's behalf.
+router.post('/confirm', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  if (!scope) return res.redirect('/settlement');
+  const d = new Date((req.body.week || '') + 'T00:00:00');
+  const wsISO = isNaN(d) ? toISODate(weekStart(new Date())) : toISODate(weekStart(d));
+  try {
+    await query(
+      `INSERT INTO settlement_confirms (driver_id, week_start, confirmed_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (driver_id, week_start) DO UPDATE SET confirmed_at = NOW()`,
+      [scope, wsISO]
+    );
+  } catch (e) { /* table missing — never block the driver */ }
+  res.redirect('/settlement?week=' + wsISO);
+});
+
+router.post('/question', requireLogin, async (req, res) => {
+  const scope = scopedDriverId(req);
+  if (!scope) return res.redirect('/settlement');
+  const d = new Date((req.body.week || '') + 'T00:00:00');
+  const wsISO = isNaN(d) ? toISODate(weekStart(new Date())) : toISODate(weekStart(d));
+  const note = (req.body.note || '').trim();
+  if (note) {
+    try {
+      await query(
+        `INSERT INTO settlement_confirms (driver_id, week_start, note, note_at, confirmed_at)
+         VALUES ($1, $2, $3, NOW(), NULL)
+         ON CONFLICT (driver_id, week_start) DO UPDATE SET
+           note = EXCLUDED.note, note_at = NOW(), confirmed_at = NULL`,
+        [scope, wsISO, note]
+      );
+    } catch (e) { /* table missing — never block the driver */ }
+  }
+  res.redirect('/settlement?week=' + wsISO);
 });
 
 // Printable weekly statement (one driver) — the driver saves/prints it
