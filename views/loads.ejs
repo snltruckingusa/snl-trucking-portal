@@ -21,13 +21,15 @@
     <div class="form-row">
       <% if (isAdmin) { %>
       <div><label>Driver</label><select name="driver_id" id="load-driver" required>
+        <option value="" selected>-- Select driver --</option>
         <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>" <%= ocr && scopedDriverId === d.id ? 'selected' : '' %>><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
       </select></div>
       <% } else { %>
       <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
       <% } %>
       <% var myTruck = ''; drivers.forEach(function(d){ if (String(d.id) === String(scopedDriverId)) myTruck = String(d.truck_number || '').replace(/^#/, ''); }); %>
-      <div><label>Truck</label><select name="truck_number" id="load-truck">
+      <div><label>Truck</label><select name="truck_number" id="load-truck"<% if (isAdmin) { %> required<% } %>>
+        <% if (isAdmin) { %><option value="" selected>-- Select truck # --</option><% } %>
         <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === myTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
       </select></div>
       <div><label>Date</label><input type="date" name="load_date" required value="<%= fmtDate(new Date()) %>"></div>
@@ -77,7 +79,7 @@
 </div>
 
 <div class="card">
-  <h2>Load list</h2>
+  <h2><%= mode === 'week' ? 'Loads — week view' : 'Load list' %></h2>
   <% if (!isAdmin) { %>
   <form method="GET" action="/loads">
     <div class="form-row" style="align-items:end">
@@ -87,6 +89,43 @@
         <% if (nextDay) { %><a class="btn secondary" href="/loads?day=<%= nextDay %>">Next day →</a><% } %></div>
     </div>
   </form>
+  <% } else if (mode === 'week') { %>
+  <form method="GET" action="/loads" class="form-row" style="align-items:end">
+    <div><label>Week of (Sun)</label><input type="date" name="week" value="<%= weekISO %>"></div>
+    <div><button type="submit">View</button>
+      <a class="btn secondary" href="/loads?week=<%= prevWeek %>">← Previous week</a>
+      <a class="btn secondary" href="/loads?week=<%= nextWeek %>">Next week →</a>
+      <a class="btn secondary" href="/loads?from=&to=">Full list (date range)</a></div>
+  </form>
+  <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b> · Sun–Sat — the settlement week.</p>
+  <% if (briefing) { %>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Scheduled</div><div style="font-size:20px"><b><%= briefing.counts.scheduled %></b></div></div>
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Picked up</div><div style="font-size:20px"><b><%= briefing.counts.picked %></b></div></div>
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Delivered</div><div style="font-size:20px"><b><%= briefing.counts.delivered %></b></div></div>
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Returned</div><div style="font-size:20px"><b><%= briefing.counts.returned %></b></div></div>
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Week total</div><div style="font-size:20px"><b><%= money(briefing.total) %></b></div></div>
+    <div style="flex:1;min-width:100px;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px"><div class="notice">Pending / Confirmed</div><div style="font-size:20px"><b><%= briefing.pending %> / <%= briefing.confirmed %></b></div></div>
+  </div>
+  <% if (briefing.stuck.length) { %>
+  <div style="border:1px solid #e3b341;background:#fffaf0;border-radius:10px;padding:10px 12px;margin-top:12px">
+    <h3 style="margin-top:0">Needs attention (<%= briefing.stuck.length %>)</h3>
+    <table>
+      <tr><th>Date</th><th>Driver</th><th>Container</th><th class="num">Amount</th><th>What is stuck</th><th></th></tr>
+      <% briefing.stuck.forEach(function(s){ var sl = s.load; %>
+      <tr>
+        <td><%= fmtDate(sl.load_date) %></td>
+        <td><%= sl.driver_name %></td>
+        <td><%= sl.container_no || '—' %></td>
+        <td class="num"><%= money(loadTotal(sl)) %></td>
+        <td><% s.reasons.forEach(function(r){ %><span class="badge flag"><%= r %></span> <% }) %></td>
+        <td><a class="btn small secondary" href="/loads?from=<%= fmtDate(sl.load_date) %>&to=<%= fmtDate(sl.load_date) %>&driver_id=<%= sl.driver_id %>">Open →</a></td>
+      </tr>
+      <% }) %>
+    </table>
+  </div>
+  <% } %>
+  <% } %>
   <% } else { %>
   <form method="GET" action="/loads">
     <div class="form-row">
@@ -376,6 +415,22 @@
               <li><a href="/loads/evidence/<%= it.id %>/photo" target="_blank"><%= it.stage === 'load_out' ? 'Load-out ticket' : it.stage === 'pod' ? 'POD' : it.stage === 'empty_in' ? 'Empty-in ticket' : it.stage === 'detention' ? 'Detention evidence' : 'Other' %></a>
                 <span class="notice"><%= new Date(it.created_at).toLocaleString() %></span>
                 <% if (it.extracted && it.extracted.cargo_wt) { %><br><span class="notice">CARGO <%= Math.round(it.extracted.cargo_wt).toLocaleString() %> lb<% if (it.extracted.ow_limit) { %> / limit <%= it.extracted.ow_limit.toLocaleString() %> lb<% } %><% if (it.extracted.overweight) { %> · <b>O/W over</b><% } %></span><% } %>
+                <% if (isAdmin) { %><br>
+                <form class="inline" method="POST" action="/loads/evidence/<%= it.id %>/stage">
+                  <select name="stage">
+                    <% if (it.stage === 'dispatch') { %><option value="dispatch" selected>Dispatch capture</option><% } %>
+                    <option value="load_out" <%= it.stage === 'load_out' ? 'selected' : '' %>>Load out EIR</option>
+                    <option value="load_in" <%= it.stage === 'load_in' ? 'selected' : '' %>>Load in EIR</option>
+                    <option value="empty_in" <%= it.stage === 'empty_in' ? 'selected' : '' %>>Empty in EIR</option>
+                    <option value="empty_out" <%= it.stage === 'empty_out' ? 'selected' : '' %>>Empty out EIR</option>
+                    <option value="pod" <%= it.stage === 'pod' ? 'selected' : '' %>>POD</option>
+                    <option value="empty_return" <%= it.stage === 'empty_return' ? 'selected' : '' %>>Empty return</option>
+                    <option value="detention" <%= it.stage === 'detention' ? 'selected' : '' %>>Detention evidence</option>
+                    <option value="other" <%= it.stage === 'other' ? 'selected' : '' %>>Other</option>
+                  </select>
+                  <button class="btn small secondary" type="submit">Save</button>
+                </form>
+                <a class="btn small danger" href="/loads/evidence/<%= it.id %>/delete-form">Delete</a><% } %>
               </li>
               <% }) %>
             </ul>
@@ -409,7 +464,7 @@
     <% }) %>
   </table></div>
   <% } %>
-  <% if (!loads.length) { %><p class="notice">No loads found.</p><% } %>
+  <% if (!loads.length) { %><p class="notice"><%= mode === 'week' ? 'No loads this week.' : 'No loads found.' %></p><% } %>
   <p class="notice">Only <b>confirmed</b> loads count in settlement.</p>
 </div>
 <script>
