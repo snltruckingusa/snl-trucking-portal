@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Settlement' }) %>
 <h1>Weekly Settlement</h1>
-<p class="notice">Week: Sunday ~ Saturday (Sun–Sat). Formula: driver pay = (confirmed revenue − fuel − insurance $100/day) × applied split. The split follows the tenure ladder (first 3 months 45% → 50% → 55% after 1 year; exempt drivers keep a fixed split). Friday close-out. Settlements are paid 1 week in arrears.<br>
+<p class="notice">Week: Sunday ~ Saturday (Sun–Sat). Formula: driver pay = (delivered revenue − fuel − insurance $100/day) × applied split. Pay follows delivery — a load counts once it is delivered, whether or not its tickets are confirmed yet. The split follows the tenure ladder (first 3 months 45% → 50% → 55% after 1 year; exempt drivers keep a fixed split). Friday close-out. Settlements are paid 1 week in arrears.<br>
 Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week full-attendance condition is met (judged automatically from the load records) and the owner confirms.<br>
 Downtime pay (truck in repair etc.) is added in full on top of the split pay — it is not split and not reduced by fuel or insurance.</p>
 
@@ -15,13 +15,13 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
 </div>
 
 <div class="grid">
-  <div class="stat"><div class="label">Confirmed revenue</div><div class="value"><%= money(totals.revenue) %></div></div>
+  <div class="stat"><div class="label">Delivered revenue</div><div class="value"><%= money(totals.revenue) %></div></div>
   <div class="stat"><div class="label">Fuel</div><div class="value"><%= money(totals.fuelCost) %></div></div>
   <div class="stat"><div class="label">Insurance</div><div class="value"><%= money(totals.insurance) %></div></div>
   <div class="stat"><div class="label">Driver pay total</div><div class="value"><%= money(totals.driverPay) %></div></div>
   <% if (isAdmin) { %><div class="stat"><div class="label">Company net</div><div class="value"><%= money(totals.companyNet) %></div></div>
   <div class="stat"><div class="label">Receipts this week</div><div class="value"><%= money(receiptsTotal) %> (<%= receiptsCount %>)</div></div><% } %>
-  <div class="stat"><div class="label">Pending entries</div><div class="value"><%= pendingCount %></div></div>
+  <div class="stat"><div class="label">Not yet delivered</div><div class="value"><%= pendingCount %></div></div>
   <% if (typeof pendingDetentionCount !== 'undefined' && pendingDetentionCount > 0) { %>
   <div class="stat"><div class="label">Detention claims pending</div><div class="value"><%= pendingDetentionCount %></div></div>
   <% } %>
