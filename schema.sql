@@ -648,3 +648,14 @@ CREATE INDEX IF NOT EXISTS ap_payments_item_idx ON ap_payments (ap_item_id, paid
 -- category that already has a record, the reason they had to give is
 -- stored on the new row so the owner sees it in the Documents Review.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS upload_reason TEXT;
+
+-- PierLink claim list (2026-11-28): claim lines carry the load's
+-- return fee so the leg-by-leg list can itemize it on leg 2 (the
+-- invoice_lines table was created before loads gained return_fee).
+ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS return_fee NUMERIC(10,2) NOT NULL DEFAULT 0;
+-- A/R difference reasons (2026-11-28): ar_entries gains an
+-- 'adjustment' kind — a recorded explanation for part of a week's
+-- difference; never counted in Listed/Received sums. Existing rows
+-- ('listed'/'received') satisfy the widened check.
+ALTER TABLE ar_entries DROP CONSTRAINT IF EXISTS ar_entries_kind_check;
+ALTER TABLE ar_entries ADD CONSTRAINT ar_entries_kind_check CHECK (kind IN ('listed','received','adjustment'));
