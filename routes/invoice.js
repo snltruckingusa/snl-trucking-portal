@@ -57,7 +57,7 @@ const ADVANCE_BASELINE_REMAINING = 2000;
 const r2 = (n) => Math.round(num(n) * 100) / 100;
 
 function lineTotal(l) {
-  return num(l.rate) + num(l.prepull) + num(l.reefer) + num(l.detention)
+  return num(l.rate) + num(l.return_fee) + num(l.prepull) + num(l.reefer) + num(l.detention)
     + num(l.overweight) + num(l.fsc);
 }
 
@@ -89,8 +89,8 @@ async function ensureWeek(weekISO) {
 // (same money rule as settlement).
 async function ensureLines(weekISO, weekEndISO) {
   await query(
-    `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, prepull, reefer, detention, overweight, fsc)
-     SELECT l.id, l.driver_id, $1, l.delivery, l.rate, l.prepull, l.reefer,
+    `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, return_fee, prepull, reefer, detention, overweight, fsc)
+     SELECT l.id, l.driver_id, $1, l.delivery, l.rate, l.return_fee, l.prepull, l.reefer,
             CASE WHEN l.detention_status IN ('pending','rejected') THEN 0 ELSE l.detention END,
             l.overweight, l.fsc
      FROM loads l
@@ -174,6 +174,216 @@ async function buildInvoice(weekISO) {
     week, weekISO, weekEndISO: weISO, blocks,
     totalPaidWeek, deliveredCount, helpInsAuto, helpIns, deduct,
     received, expected, balance,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PierLink claim list (2026-11-28) — the Saturday send-sheet, rendered
+// the way PierLink's own statements are built: ONE-WAY LEGS (편도).
+// Leg 1 = pickup -> delivery (the week of the load's date); leg 2 =
+// delivery -> empty return (the week of returned_on). PierLink splits
+// a round trip 50/50 across the legs — verified against their Payroll
+// Detail statements (reconciliation 2026-11-20: a $1,650 round trip
+// pays as $825 + $825; a lone return leg pays $757.50 / $795.00) — so
+// the component placement mirrors theirs:
+//   halved 50/50 : rate, reefer, overweight, fsc
+//                  (leg 2 takes the remainder, so the halves always
+//                  sum back to the line total to the cent)
+//   leg 1 only   : detention (the wait happens at delivery; the
+//                  line amount is already dispatcher-approval-gated
+//                  at line creation)
+//   leg 2 only   : return_fee (payment for the return movement
+//                  itself), prepull (Eric's decision 2026-11-28,
+//                  Q2: P/P is claimed with the return leg)
+// Help Ins: PierLink books the $15/load subsidy as $7.50 PER LEG
+// inside their leg amounts. On our list it is its own Insurance
+// column, but it is NOT part of a leg's claim Total — Eric's claim
+// totals exclude the subsidy by design (a company subsidy, not load
+// money), so Total = claim components, and the Insurance column is
+// the memo PierLink adds on their side (it re-enters the money only
+// in the footer's "expected deposit" line). Eligibility mirrors the
+// invoice footer rule: trucks 100/101/200/201, leg week inside the
+// policy window (until 2027-09-30).
+//
+// Two clocks stay visible: a delivered-but-not-returned load shows
+// its leg 1 with real amounts AND a $0 leg-2 placeholder line
+// (container number + delivery date/destination, "Empty not returned
+// — not claimed yet"), so the outstanding container is never
+// forgotten. The placeholder's upcoming leg-2 amount sums into the
+// block's "Payment for Next week (Mty Not Return)" line, exactly as
+// in Eric's Excel. When the return lands in a later week, the real
+// leg-2 line appears in THAT week's list and counts toward that
+// block's "Previous unpaid amount (Mty Return)" context.
+// ---------------------------------------------------------------------------
+const HELP_INS_LEG = 7.5;
+const HELP_INS_TRUCKS = ['100', '101', '200', '201'];
+
+function sundayOf(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return null;
+  return toISODate(weekStart(d));
+}
+
+function half(v) { return Math.round((num(v) / 2) * 100) / 100; }
+
+// Expand one claim line into its legs. `line` is an invoice_lines row;
+// `load` is the joined loads row (load_date / returned_on / progress /
+// container_no / truck_number / delivery), or null for a manual line.
+// Each leg: { leg, dateISO, weekISO (Sunday), pending, components...,
+// insurance, claim, total } — claim = component sum (what Eric's Paid
+// counts), total = claim + insurance (what PierLink's statement shows
+// for the leg). A pending leg 2 carries $0 everywhere (display only).
+// Manual lines have no legs: one row in their claim week, no
+// insurance (a standalone service claim is not a round trip; PierLink
+// pays no subsidy on return-only statement legs either —
+// reconciliation 2026-11-20).
+function lineLegs(line, load) {
+  const base = {
+    lineId: line.id, driverId: line.driver_id,
+    description: line.description || (load && (load.load_delivery || load.delivery)) || '',
+    container: (load && load.container_no) || '',
+    truck: (load && load.truck_number) || '',
+  };
+  if (!load) {
+    const claim = lineTotal(line);
+    return [{
+      ...base, leg: 0, manual: true,
+      dateISO: fmtDate(line.claim_week), weekISO: fmtDate(line.claim_week),
+      pending: false,
+      rate: num(line.rate), returnFee: num(line.return_fee), prepull: num(line.prepull),
+      reefer: num(line.reefer), detention: num(line.detention),
+      overweight: num(line.overweight), fsc: num(line.fsc),
+      insurance: 0, claim, total: claim,
+    }];
+  }
+  const loadISO = fmtDate(load.load_date);
+  const retISO = fmtDate(load.returned_on);
+  const eligible = HELP_INS_TRUCKS.includes(String(load.truck_number || '').replace(/^#/, ''));
+  const insFor = (wkISO) => (eligible && wkISO && wkISO <= HELP_INS_UNTIL ? HELP_INS_LEG : 0);
+  const mk = (leg, dateISO, wkISO, comps, pending) => {
+    const claim = r2(comps.rate + comps.returnFee + comps.prepull + comps.reefer
+      + comps.detention + comps.overweight + comps.fsc);
+    const insurance = pending ? 0 : insFor(wkISO);
+    return { ...base, leg, manual: false, dateISO, weekISO: wkISO, pending, ...comps,
+      insurance, claim, total: r2(claim + insurance) };
+  };
+  const leg1 = mk(1, loadISO, sundayOf(loadISO), {
+    rate: half(line.rate), returnFee: 0, prepull: 0,
+    reefer: half(line.reefer), detention: num(line.detention),
+    overweight: half(line.overweight), fsc: half(line.fsc),
+  }, false);
+  const leg2 = mk(2, retISO || loadISO, retISO ? sundayOf(retISO) : null, {
+    rate: r2(num(line.rate) - leg1.rate), returnFee: num(line.return_fee),
+    prepull: num(line.prepull), reefer: r2(num(line.reefer) - leg1.reefer), detention: 0,
+    overweight: r2(num(line.overweight) - leg1.overweight),
+    fsc: r2(num(line.fsc) - leg1.fsc),
+  }, !retISO);
+  return [leg1, leg2];
+}
+
+// Assemble the claim list for one week (Sunday key; the page labels
+// it by its Saturday). Reads the SAME invoice_lines as the invoice
+// pages and A/R — one source, no second copy of the money.
+async function buildClaimList(weekISO, canWrite) {
+  const ws = new Date(weekISO + 'T00:00:00');
+  const weISO = toISODate(weekEnd(ws));
+  let week;
+  if (canWrite) {
+    week = await ensureWeek(weekISO);
+    await ensureLines(weekISO, weISO);
+  } else {
+    // CPA reads stay pure reads (same rule as A/R): no week/line
+    // creation on a read-only view.
+    const r = await query('SELECT * FROM invoice_weeks WHERE week_start = $1', [weekISO]);
+    week = r.rows[0] || { week_start: weekISO, advance_deduct: 500, received: 0, help_ins_override: null, sent_at: null };
+  }
+
+  const drivers = (await query('SELECT * FROM drivers ORDER BY name')).rows;
+  const lines = (await query(
+    `SELECT il.*, l.load_date, l.delivery AS load_delivery, l.progress,
+            l.returned_on, l.container_no, l.truck_number
+     FROM invoice_lines il LEFT JOIN loads l ON l.id = il.load_id
+     ORDER BY il.driver_id, il.id`
+  )).rows;
+
+  const blocks = [];
+  let totalClaim = 0, totalInsurance = 0, totalGross = 0;
+  for (const d of drivers) {
+    const rows = [], stillOut = [];
+    let prevUnpaid = 0, claim = 0, insurance = 0, holdTotal = 0, stillOutTotal = 0;
+    for (const l of lines) {
+      if (l.driver_id !== d.id) continue;
+      const legs = lineLegs(l, l.load_id ? l : null);
+      for (const leg of legs) {
+        if (leg.manual) {
+          if (leg.weekISO === weekISO) rows.push(leg);
+          continue;
+        }
+        if (leg.leg === 1) {
+          if (leg.weekISO === weekISO) rows.push(leg);
+          continue;
+        }
+        // Leg 2.
+        if (!leg.pending) {
+          if (leg.weekISO === weekISO) {
+            rows.push(leg);
+            // A return leg claimed this week for a load delivered in
+            // an earlier week is the carried-in "Previous unpaid".
+            if (legs[0].weekISO && legs[0].weekISO < weekISO) prevUnpaid = r2(prevUnpaid + leg.claim);
+          }
+        } else if (legs[0].weekISO === weekISO) {
+          // Delivered this week, empty still out: $0 placeholder line
+          // in this week's block + its amount in the hold total.
+          rows.push(leg);
+          holdTotal = r2(holdTotal + leg.claim);
+        } else if (legs[0].weekISO && legs[0].weekISO < weekISO) {
+          // Still out from an earlier week — stays visible, listed
+          // separately so this week's hold line keeps Eric's shape.
+          stillOut.push(leg);
+          stillOutTotal = r2(stillOutTotal + leg.claim);
+        }
+      }
+    }
+    rows.sort((a, b) => (a.dateISO < b.dateISO ? -1 : a.dateISO > b.dateISO ? 1 : a.leg - b.leg));
+    for (const r of rows) {
+      if (r.pending) continue;
+      claim = r2(claim + r.claim);
+      insurance = r2(insurance + r.insurance);
+    }
+    if (!rows.length && !stillOut.length) continue;
+    totalClaim = r2(totalClaim + claim);
+    totalInsurance = r2(totalInsurance + insurance);
+    blocks.push({ driver: d, rows, stillOut, prevUnpaid, claim, insurance, holdTotal, stillOutTotal });
+  }
+  totalGross = r2(totalClaim + totalInsurance);
+
+  const deduct = num(week.advance_deduct);
+  const insuranceUsed = (week.help_ins_override !== null && week.help_ins_override !== undefined)
+    ? num(week.help_ins_override) : totalInsurance;
+  // Received ties to A/R when PierLink deposits are recorded there
+  // (the A/R entries are the newer record); the invoice week's own
+  // received figure is the fallback.
+  let receivedAR = 0;
+  try {
+    const cust = await query('SELECT id FROM ar_customers WHERE invoice_linked = true ORDER BY id LIMIT 1');
+    if (cust.rows.length) {
+      const s = await query(
+        "SELECT COALESCE(SUM(amount),0) AS s FROM ar_entries WHERE customer_id = $1 AND week_of = $2 AND kind = 'received'",
+        [cust.rows[0].id, weekISO]
+      );
+      receivedAR = num(s.rows[0].s);
+    }
+  } catch (e) { /* A/R tables predate this page on old DBs — fall back silently. */ }
+  const received = receivedAR > 0 ? receivedAR : num(week.received);
+  const sTotal = r2(totalClaim - deduct);
+  const expectedDeposit = r2(totalClaim + insuranceUsed - deduct);
+  const balance = r2(sTotal - received);
+
+  return {
+    week, weekISO, weekEndISO: weISO, blocks,
+    totalClaim, totalInsurance, insuranceUsed, totalGross,
+    deduct, received, receivedAR, sTotal, expectedDeposit, balance,
   };
 }
 
@@ -281,6 +491,32 @@ router.get('/', async (req, res) => {
   }
 });
 
+// The PierLink claim list (leg-by-leg send sheet). Any date in the
+// week is accepted and snapped to its Sunday; the page labels the
+// week by its ending Saturday, like A/R.
+router.get('/claim-list', async (req, res) => {
+  try {
+    let wsISO = req.query.week;
+    if (!wsISO || !/^\d{4}-\d{2}-\d{2}$/.test(wsISO) || isNaN(new Date(wsISO + 'T00:00:00'))) {
+      wsISO = toISODate(weekStart(new Date()));
+    } else {
+      wsISO = toISODate(weekStart(new Date(wsISO + 'T00:00:00')));
+    }
+    const canWrite = req.session.user.role === 'admin';
+    const data = await buildClaimList(wsISO, canWrite);
+    const wsDate = new Date(wsISO + 'T00:00:00');
+    return res.render('invoice-claim-list', {
+      ...data, canWrite,
+      prevWeek: toISODate(addDays(wsDate, -7)),
+      nextWeek: toISODate(addDays(wsDate, 7)),
+      weekLabel: 'Week ending Sat ' + data.weekEndISO,
+    });
+  } catch (e) {
+    console.error('invoice claim-list failed:', e);
+    return res.status(500).send('Claim list failed to load. Please try again.');
+  }
+});
+
 // Back to the driver a line belongs to (keeps the drill-down context
 // after a write). Falls back to the week home when unknown.
 function driverBack(week, driverId) {
@@ -298,11 +534,11 @@ router.post('/lines/:id/edit', async (req, res) => {
   try {
     const driverId = await lineDriverId(req.params.id);
     await query(
-      `UPDATE invoice_lines SET description=$1, rate=$2, prepull=$3, reefer=$4,
-         detention=$5, overweight=$6, fsc=$7 WHERE id=$8`,
-      [(req.body.description || '').trim() || null, num(req.body.rate), num(req.body.prepull),
-       num(req.body.reefer), num(req.body.detention), num(req.body.overweight),
-       num(req.body.fsc), req.params.id]
+      `UPDATE invoice_lines SET description=$1, rate=$2, return_fee=$3, prepull=$4, reefer=$5,
+         detention=$6, overweight=$7, fsc=$8 WHERE id=$9`,
+      [(req.body.description || '').trim() || null, num(req.body.rate), num(req.body.return_fee),
+       num(req.body.prepull), num(req.body.reefer), num(req.body.detention),
+       num(req.body.overweight), num(req.body.fsc), req.params.id]
     );
     res.redirect(driverBack(week, driverId));
   } catch (e) {
@@ -360,10 +596,10 @@ router.post('/lines', async (req, res) => {
   const driverId = parseInt(req.body.driver_id, 10) || null;
   try {
     await query(
-      `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, prepull, reefer, detention, overweight, fsc)
-       VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, return_fee, prepull, reefer, detention, overweight, fsc)
+       VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [driverId, week, (req.body.description || '').trim() || null,
-       num(req.body.rate), num(req.body.prepull), num(req.body.reefer),
+       num(req.body.rate), num(req.body.return_fee), num(req.body.prepull), num(req.body.reefer),
        num(req.body.detention), num(req.body.overweight), num(req.body.fsc)]
     );
     res.redirect(driverBack(week, driverId));
@@ -412,3 +648,6 @@ router.post('/week', async (req, res) => {
 });
 
 module.exports = router;
+// Exported for A/R (leg-based claimed totals must use the identical
+// split — one source) and for tests, same pattern as settlement.js.
+module.exports.claimHelpers = { lineLegs, lineTotal, buildClaimList, HELP_INS_LEG, HELP_INS_TRUCKS };
