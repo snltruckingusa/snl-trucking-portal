@@ -733,6 +733,30 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
      (req.body.notes || '').trim() || null, newVals.empty_container, flagsOk, req.params.id,
      newVals.empty_pin, newVals.load_pin, newVals.job_type, newVals.yard_fee, newVals.truck_number]
   );
+  // Actual movement dates (admin only): when a load was registered late,
+  // the stamped delivered_on / returned_on can be corrected to the ticket
+  // dates so pay weeks, claim weeks and insurance days follow the truth.
+  // A blank field keeps the recorded date; driver edits never carry these
+  // fields. Every correction is logged in load_changes.
+  if (!scope && (req.body.delivered_on || req.body.returned_on)) {
+    const dOn = req.body.delivered_on || null;
+    const rOn = req.body.returned_on || null;
+    await query(
+      `UPDATE loads SET delivered_on = COALESCE($1::date, delivered_on),
+         returned_on = COALESCE($2::date, returned_on) WHERE id = $3`,
+      [dOn, rOn, req.params.id]
+    );
+    const pairs = [['delivered_on', dOn], ['returned_on', rOn]];
+    for (const [field, val] of pairs) {
+      const oldVal = old[field] ? fmtDate(old[field]) : null;
+      if (val && oldVal !== val) {
+        await query(
+          'INSERT INTO load_changes (load_id, changed_by, field, old_value, new_value) VALUES ($1,$2,$3,$4,$5)',
+          [old.id, req.session.user.username, field, oldVal, val]
+        );
+      }
+    }
+  }
   res.redirect('/loads');
 });
 
