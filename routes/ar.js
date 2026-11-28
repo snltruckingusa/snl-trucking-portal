@@ -53,7 +53,7 @@ const {
 // sections silently disagree. No require cycle: invoice.js never
 // requires this module.
 const { claimHelpers } = require('./invoice');
-const { lineLegs } = claimHelpers;
+const { lineLegs, lineTotal, HELP_INS_LEG, CLAIM_BASELINE_WEEK } = claimHelpers;
 
 const router = express.Router();
 router.use(requireLogin);
@@ -164,6 +164,18 @@ async function customerWeeks(customer) {
        FROM invoice_lines il LEFT JOIN loads l ON l.id = il.load_id`
     )).rows;
     for (const l of lines) {
+      const lineWeek = asISO(l.claim_week);
+      if (lineWeek && lineWeek < CLAIM_BASELINE_WEEK) {
+        // Sealed pre-baseline week (claimed via Excel at the time):
+        // claimed = the week's line totals on the delivery-week
+        // basis, exactly as submitted. These lines' legs are never
+        // re-attributed into later weeks (see CLAIM_BASELINE_WEEK
+        // in routes/invoice.js).
+        const w = row(lineWeek);
+        w.claimed = r2(w.claimed + lineTotal(l));
+        if (l.load_id) w.helpIns = r2(w.helpIns + HELP_INS_LEG * 2);
+        continue;
+      }
       for (const leg of lineLegs(l, l.load_id ? l : null)) {
         if (leg.pending || !leg.weekISO) continue;
         const w = row(leg.weekISO);
