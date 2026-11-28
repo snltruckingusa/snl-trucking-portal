@@ -14,7 +14,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const {
   requireLogin, requireAdmin, scopedDriverId, num, fmtDate, isAdmin, nextProgress,
-  weekStart, toISODate, addDays,
+  weekStart, weekEnd, toISODate, addDays, loadTotal,
 } = require('../lib/helpers');
 const { matchLane } = require('../lib/rates');
 const { parseEIR } = require('../lib/eir');
@@ -398,47 +398,135 @@ function loadWhere(req) {
   return { where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '', params };
 }
 
-router.get('/', requireLogin, async (req, res) => {
-  const scope = scopedDriverId(req);
-  let day = null, prevDay = null, nextDay = null;
-  let where, params;
-  if (scope && !req.query.from && !req.query.to) {
-    // Drivers work one day at a time (Eric, 2026-11-14): the list shows
-    // a single day — today by default — with prev/next-day navigation,
-    // instead of every date on one long page.
-    day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '') ? req.query.day : toISODate(new Date());
-    const d = new Date(day + 'T00:00:00');
-    prevDay = toISODate(addDays(d, -1));
-    nextDay = toISODate(addDays(d, 1));
-    where = 'WHERE l.driver_id = $1 AND l.load_date = $2';
-    params = [scope, day];
-    if (req.query.status) { params.push(req.query.status); where += ` AND l.status = $${params.length}`; }
-  } else {
-    ({ where, params } = loadWhere(req));
+// ---- Week home briefing (Phase 2, Eric 2026-11-28) ------------------
+// Why a load is stuck, from the same facts the list itself shows: the
+// latest load-out ticket's extracted fields vs the entry (the list's
+// own mismatch check in loads.ejs), plus the ticket pair the
+// approve-tickets handler requires for the job type, plus the staged
+// approval flags (dispatch_ok / tickets_ok / status).
+const TICKET_STAGE_LABELS = { load_in: 'load-in', load_out: 'load-out', empty_in: 'empty-in', empty_out: 'empty-out' };
+function ticketProblems(l, ev) {
+  const problems = [];
+  const loIt = ev ? (ev.items.filter(it => it.stage === 'load_out').slice(-1)[0] || null) : null;
+  if (loIt && loIt.extracted) {
+    if (loIt.extracted.container_no && l.container_no
+        && String(loIt.extracted.container_no).toUpperCase() !== String(l.container_no).toUpperCase()) {
+      problems.push('container number mismatch');
+    }
+    if (loIt.extracted.overweight && Number(l.overweight) === 0) problems.push('overweight mismatch');
+    if (loIt.extracted.is_reefer && Number(l.reefer) === 0) problems.push('reefer mismatch');
   }
-  const r = await query(
-    `SELECT l.*, d.name AS driver_name, d.truck_number AS driver_truck FROM loads l
-     JOIN drivers d ON d.id = l.driver_id ${where}
-     ORDER BY l.load_date DESC, l.id DESC`,
-    params
-  );
-  const drivers = await query('SELECT * FROM drivers ORDER BY name');
-  const evidence = await evidenceSummary(r.rows.map(l => l.id));
-  const emptyMatch = await emptyMatchMap(r.rows);
-  // The driver card's Step 2 (empty return ticket) reads the MATCHED
-  // earlier load's empty-in evidence — pull those summaries in too.
-  const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
-  if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
-  decorateRows(r.rows);
-  const ppData = await prepullData(req);
-  res.render('loads', {
-    loads: r.rows, drivers: drivers.rows, trucks: await truckList(), evidence, emptyMatch,
-    myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
-    filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
-    isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
-    ocr: null, ocrNotice: null, notice: req.query.notice || null,
-    day, prevDay, nextDay,
-  });
+  const need = (l.job_type || 'standard') === 'in_out_empty' ? ['load_in', 'empty_out'] : ['load_out', 'empty_in'];
+  const missing = need.filter(s => !(ev && ev[s] > 0));
+  if (missing.length) {
+    problems.push('missing ' + missing.map(s => TICKET_STAGE_LABELS[s]).join(' + ') + (missing.length > 1 ? ' tickets' : ' ticket'));
+  }
+  return problems;
+}
+
+function weekBriefing(rows, evidence) {
+  const counts = { scheduled: 0, picked: 0, delivered: 0, returned: 0 };
+  let total = 0, pending = 0, confirmed = 0;
+  const stuck = [];
+  for (const l of rows) {
+    if (Object.prototype.hasOwnProperty.call(counts, l.progress)) counts[l.progress] += 1;
+    total += loadTotal(l);
+    if (l.status === 'confirmed') confirmed += 1; else pending += 1;
+    const reasons = [];
+    if (l.progress === 'delivered') reasons.push('Delivered — empty not returned yet');
+    if (l.status === 'pending' && !l.dispatch_ok) reasons.push('Dispatch not approved');
+    if (l.status === 'pending' && !l.tickets_ok) {
+      const probs = ticketProblems(l, evidence[l.id]);
+      reasons.push('Tickets not approved' + (probs.length ? ' — ' + probs.join('; ') : ''));
+    }
+    if (l.status === 'pending' && l.dispatch_ok && l.tickets_ok) reasons.push('Approved — waiting to confirm');
+    if (reasons.length) stuck.push({ load: l, reasons });
+  }
+  // Oldest first — the longest-stuck load sits at the top.
+  stuck.sort((a, b) => (new Date(a.load.load_date) - new Date(b.load.load_date)) || (a.load.id - b.load.id));
+  return { counts, total: Math.round(total * 100) / 100, pending, confirmed, stuck };
+}
+
+router.get('/', requireLogin, async (req, res) => {
+  try {
+    const scope = scopedDriverId(req);
+    let day = null, prevDay = null, nextDay = null;
+    let where, params;
+    // Three modes. 'day' = the driver's single-day view (unchanged).
+    // 'week' = the Phase 2 week home (admin, no filter keys in the
+    // query). 'classic' = the original filtered list, reached whenever
+    // a filter key is present — the filter form always submits
+    // from/to/driver_id/status and the week home's drill-in links
+    // carry from/to, so refining a search stays in the classic list
+    // (the same key-presence pattern as /fuel and /invoice).
+    let mode = 'classic';
+    let weekISO = '', weekEndISO = '', prevWeek = '', nextWeek = '';
+    const hasFilters = ('from' in req.query) || ('to' in req.query)
+      || ('driver_id' in req.query) || ('status' in req.query);
+    if (scope && !req.query.from && !req.query.to) {
+      mode = 'day';
+      // Drivers work one day at a time (Eric, 2026-11-14): the list shows
+      // a single day — today by default — with prev/next-day navigation,
+      // instead of every date on one long page.
+      day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '') ? req.query.day : toISODate(new Date());
+      const d = new Date(day + 'T00:00:00');
+      prevDay = toISODate(addDays(d, -1));
+      nextDay = toISODate(addDays(d, 1));
+      where = 'WHERE l.driver_id = $1 AND l.load_date = $2';
+      params = [scope, day];
+      if (req.query.status) { params.push(req.query.status); where += ` AND l.status = $${params.length}`; }
+    } else if (!scope && !hasFilters) {
+      mode = 'week';
+      // Guard: a malformed ?week= must never reach the date math as
+      // an Invalid Date — fall back to the current week (fuel/invoice
+      // pattern). A valid date is snapped to the Sunday of its week,
+      // using the same weekStart() as settlement, so this page and
+      // the Settlement page always describe the same Sun–Sat window.
+      let wsISO = req.query.week;
+      if (!wsISO || !/^\d{4}-\d{2}-\d{2}$/.test(wsISO) || isNaN(new Date(wsISO + 'T00:00:00'))) {
+        wsISO = toISODate(weekStart(new Date()));
+      } else {
+        wsISO = toISODate(weekStart(new Date(wsISO + 'T00:00:00')));
+      }
+      const wsDate = new Date(wsISO + 'T00:00:00');
+      weekISO = wsISO;
+      weekEndISO = toISODate(weekEnd(wsDate));
+      prevWeek = toISODate(addDays(wsDate, -7));
+      nextWeek = toISODate(addDays(wsDate, 7));
+      where = 'WHERE l.load_date >= $1 AND l.load_date <= $2';
+      params = [wsISO, weekEndISO];
+    } else {
+      ({ where, params } = loadWhere(req));
+    }
+    const r = await query(
+      `SELECT l.*, d.name AS driver_name, d.truck_number AS driver_truck FROM loads l
+       JOIN drivers d ON d.id = l.driver_id ${where}
+       ORDER BY l.load_date DESC, l.id DESC`,
+      params
+    );
+    const drivers = await query('SELECT * FROM drivers ORDER BY name');
+    const evidence = await evidenceSummary(r.rows.map(l => l.id));
+    const emptyMatch = await emptyMatchMap(r.rows);
+    // The driver card's Step 2 (empty return ticket) reads the MATCHED
+    // earlier load's empty-in evidence — pull those summaries in too.
+    const matchIds = [...new Set(Object.values(emptyMatch).map(m => m.id))].filter(id => !evidence[id]);
+    if (matchIds.length) Object.assign(evidence, await evidenceSummary(matchIds));
+    decorateRows(r.rows);
+    const ppData = await prepullData(req);
+    const briefing = mode === 'week' ? weekBriefing(r.rows, evidence) : null;
+    res.render('loads', {
+      loads: r.rows, drivers: drivers.rows, trucks: await truckList(), evidence, emptyMatch,
+      myPrepulls: ppData.myPrepulls, pendingPrepulls: ppData.pendingPrepulls,
+      filters: { from: req.query.from || '', to: req.query.to || '', driver_id: req.query.driver_id || '', status: req.query.status || '' },
+      isAdmin: isAdmin(req), scopedDriverId: scopedDriverId(req),
+      ocr: null, ocrNotice: null, notice: req.query.notice || null,
+      day, prevDay, nextDay,
+      mode, weekISO, weekEndISO, prevWeek, nextWeek, briefing,
+    });
+  } catch (e) {
+    console.error('loads GET failed:', e);
+    return res.status(500).send('Loads failed to load. Please try again.');
+  }
 });
 
 // OCR upload: photo -> extracted suggestions -> prefill form (not saved yet).
@@ -500,13 +588,18 @@ router.post('/ocr', requireLogin, upload.single('ticket'), async (req, res) => {
     ocr: { ...extracted, ticket_photo: photoPath },
     ocrNotice: notice, notice: null,
     day: null, prevDay: null, nextDay: null,
+    mode: 'classic', weekISO: '', weekEndISO: '', prevWeek: '', nextWeek: '', briefing: null,
   });
 });
 
 router.post('/', requireLogin, async (req, res) => {
   const scope = scopedDriverId(req);
   const driver_id = scope || parseInt(req.body.driver_id, 10);
-  if (!driver_id) return res.redirect('/loads');
+  // No driver picked: the Add form opens on "-- Select driver --" on
+  // purpose (Eric, 2026-11-28 — the fuel form's Nov 26 fix), so a load
+  // must never be filed under a default driver. Send the owner back
+  // with the reason showing instead of saving anything.
+  if (!driver_id) return res.redirect('/loads?notice=' + encodeURIComponent('Pick a driver first — the load was not saved.'));
   // Correction policy: drivers cannot add entries into a closed week.
   if (scope && await weekClosed(driver_id, req.body.load_date)) {
     return res.status(403).send('This week is already settled (closed). Ask the owner to add or correct entries.');
@@ -798,6 +891,68 @@ router.get('/evidence/:eid/photo', requireLogin, async (req, res) => {
     if (fs.existsSync(p)) return res.sendFile(p);
   }
   return res.status(404).send('Photo not available.');
+});
+
+// ---- Evidence file management (Eric, 2026-11-28) -------------------
+// Every evidence file gets a Delete and an Edit (stage change), admin
+// only — the same two verbs as everywhere else. Delete uses a
+// confirmation PAGE, not a JS dialog (the load delete-form pattern).
+// Deleting removes only the evidence row — its photo bytes live in
+// that row; a legacy on-disk file is unlinked best-effort — never the
+// load itself. The stage list is exactly the set the evidence upload
+// handler accepts, so a stage set here is always one an upload could
+// have produced. ('dispatch' is system-filed by POST /loads from the
+// order capture and is deliberately not a target stage.)
+const EVIDENCE_STAGES = ['load_out', 'pod', 'empty_in', 'detention', 'other', 'empty_return', 'load_in', 'empty_out'];
+
+router.get('/evidence/:eid/delete-form', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const r = await query(
+      `SELECT e.id, e.load_id, e.stage, e.created_at, e.uploaded_by,
+              l.load_date, l.container_no, l.delivery, d.name AS driver_name
+         FROM load_evidence e
+         JOIN loads l ON l.id = e.load_id
+         JOIN drivers d ON d.id = l.driver_id
+        WHERE e.id = $1`,
+      [req.params.eid]
+    );
+    if (!r.rows.length) return res.redirect('/loads');
+    res.render('evidence-delete', { ev: r.rows[0], isAdmin: isAdmin(req) });
+  } catch (e) {
+    console.error('evidence delete-form failed:', e);
+    return res.status(500).send('Failed to load. Please try again.');
+  }
+});
+
+router.post('/evidence/:eid/delete', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const r = await query('SELECT id, photo_path FROM load_evidence WHERE id = $1', [req.params.eid]);
+    if (!r.rows.length) return res.redirect('/loads');
+    if (r.rows[0].photo_path) {
+      const p = path.join(__dirname, '..', r.rows[0].photo_path);
+      fs.unlink(p, () => {});
+    }
+    await query('DELETE FROM load_evidence WHERE id = $1', [req.params.eid]);
+    res.redirect('/loads?notice=' + encodeURIComponent('Evidence file deleted.'));
+  } catch (e) {
+    console.error('evidence delete failed:', e);
+    return res.status(500).send('Delete failed. Please try again.');
+  }
+});
+
+// Change a file's stage (its category) — e.g. a ticket filed as
+// "Other" that is really the load's empty-in ticket. Only the stage
+// column changes; the photo, OCR text and extracted fields stay.
+router.post('/evidence/:eid/stage', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const stage = EVIDENCE_STAGES.includes(req.body.stage) ? req.body.stage : null;
+    if (!stage) return res.redirect(req.get('Referrer') || '/loads');
+    await query('UPDATE load_evidence SET stage = $1 WHERE id = $2', [stage, req.params.eid]);
+    res.redirect(req.get('Referrer') || '/loads');
+  } catch (e) {
+    console.error('evidence stage change failed:', e);
+    return res.status(500).send('Change failed. Please try again.');
+  }
 });
 
 // List evidence rows for one load (admin + owning driver) as JSON —
