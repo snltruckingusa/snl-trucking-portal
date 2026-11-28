@@ -751,7 +751,11 @@ router.post('/:id/progress', requireLogin, uploadMem.single('evidence'), async (
   if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
   const next = nextProgress(existing.rows[0].progress);
   if (next === 'returned' && !existing.rows[0].returned_on) {
-    await query('UPDATE loads SET progress = $1, returned_on = CURRENT_DATE WHERE id = $2', [next, req.params.id]);
+    await query('UPDATE loads SET progress = $1, returned_on = CURRENT_DATE, delivered_on = COALESCE(delivered_on, CURRENT_DATE) WHERE id = $2', [next, req.params.id]);
+  } else if (next === 'delivered') {
+    // Stamp the delivery date: both clocks (driver pay, claim leg 1)
+    // cut by the delivery week (Eric, 2026-11-28).
+    await query('UPDATE loads SET progress = $1, delivered_on = COALESCE(delivered_on, CURRENT_DATE) WHERE id = $2', [next, req.params.id]);
   } else {
     await query('UPDATE loads SET progress = $1 WHERE id = $2', [next, req.params.id]);
   }
@@ -823,7 +827,9 @@ async function advanceProgress(load) {
     );
     if (parseInt(cnt.rows[0].n, 10) < 1) break;
     if (nxt === 'returned') {
-      await query('UPDATE loads SET progress = $1, returned_on = COALESCE(returned_on, CURRENT_DATE) WHERE id = $2', [nxt, load.id]);
+      await query('UPDATE loads SET progress = $1, returned_on = COALESCE(returned_on, CURRENT_DATE), delivered_on = COALESCE(delivered_on, CURRENT_DATE) WHERE id = $2', [nxt, load.id]);
+    } else if (nxt === 'delivered') {
+      await query('UPDATE loads SET progress = $1, delivered_on = COALESCE(delivered_on, CURRENT_DATE) WHERE id = $2', [nxt, load.id]);
     } else {
       await query('UPDATE loads SET progress = $1 WHERE id = $2', [nxt, load.id]);
     }
