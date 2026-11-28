@@ -89,13 +89,13 @@
 </div>
 
 <div class="card">
-  <h2>Open differences (oldest first)</h2>
+  <h2>Open differences (newest first)</h2>
   <div class="table-wrap"><table>
-    <tr><th>Customer</th><th>Week of</th><th class="num">Claimed</th><th class="num">Received</th><th class="num">Difference</th><th>Status</th><th class="num">Open for</th></tr>
+    <tr><th>Customer</th><th>Week ending (Sat)</th><th class="num">Claimed</th><th class="num">Received</th><th class="num">Difference</th><th>Status</th><th class="num">Open for</th></tr>
     <% openDiffs.forEach(function (w) { %>
     <tr>
       <td><a href="/ar/customer/<%= w.customer.id %>"><%= w.customer.name %></a></td>
-      <td><%= w.week %></td>
+      <td><%= w.weekLabel %></td>
       <td class="num"><%= money(w.claimed) %></td>
       <td class="num"><%= money(w.received) %></td>
       <td class="num"><b style="color:#d9534f"><%= money(w.status.diff) %></b></td>
@@ -105,18 +105,18 @@
     <% }) %>
     <% if (!openDiffs.length) { %><tr><td colspan="7" class="notice">Nothing open — every claimed week is received in full.</td></tr><% } %>
   </table></div>
-  <% if (openDiffCount > openDiffs.length) { %><p class="notice">Showing the oldest <%= openDiffs.length %> of <%= openDiffCount %> open weeks — open a customer for its full list.</p><% } %>
+  <% if (openDiffCount > openDiffs.length) { %><p class="notice">Showing the newest <%= openDiffs.length %> of <%= openDiffCount %> open weeks — open a customer for its full list.</p><% } %>
 </div>
 
 <div class="card">
   <h2>Recent receipts</h2>
   <div class="table-wrap"><table>
-    <tr><th>Date</th><th>Customer</th><th>For week of</th><th class="num">Amount</th><th>Method</th><th>Note</th></tr>
+    <tr><th>Date</th><th>Customer</th><th>For week ending (Sat)</th><th class="num">Amount</th><th>Method</th><th>Note</th></tr>
     <% receipts.forEach(function (r) { %>
     <tr>
       <td><%= r.entry_date %></td>
       <td><%= r.customer_name %></td>
-      <td><%= r.week_of %></td>
+      <td><%= r.weekLabel %></td>
       <td class="num"><%= money(r.amount) %></td>
       <td><%= r.method || '' %></td>
       <td><%= r.note || '' %></td>
@@ -153,10 +153,10 @@
 <div class="card">
   <h2>Weeks</h2>
   <div class="table-wrap"><table>
-    <tr><th>Week of (Sun)</th><th class="num">Claimed</th><th class="num">Listed</th><th class="num">Received</th><th class="num">Difference</th><th>Status</th><% if (customer.invoice_linked) { %><th class="num">Invoice-page payments*</th><% } %></tr>
+    <tr><th>Week ending (Sat)</th><th class="num">Claimed</th><th class="num">Listed</th><th class="num">Received</th><th class="num">Difference</th><th>Status</th><% if (customer.invoice_linked) { %><th class="num">Invoice-page payments*</th><% } %></tr>
     <% weeks.forEach(function (w) { %>
     <tr>
-      <td><b><%= w.week %></b></td>
+      <td><b><%= w.weekLabel %></b></td>
       <td class="num"><%= money(w.claimed) %></td>
       <td class="num"><%= money(w.listed) %></td>
       <td class="num"><%= money(w.received) %></td>
@@ -175,7 +175,7 @@
   <h2>Record a list announcement / deposit</h2>
   <form method="POST" action="/ar/entries" class="form-row" style="flex-wrap:wrap;gap:10px;align-items:end">
     <input type="hidden" name="customer_id" value="<%= customer.id %>">
-    <div><label>For week of</label><input type="date" name="week_of" required value="<%= todayISO %>"></div>
+    <div><label>For week ending (Sat)</label><input type="date" name="week_of" required value="<%= todayISO %>" data-week-sat="entryWeekSat"><div id="entryWeekSat" class="notice"></div></div>
     <div><label>Kind</label>
       <select name="kind"><% entryKinds.forEach(function (k) { %><option value="<%= k %>"><%= k === 'listed' ? 'Listed (announced)' : 'Received (deposit landed)' %></option><% }) %></select></div>
     <div><label>Amount $</label><input type="number" name="amount" step="0.01" min="0" required></div>
@@ -185,7 +185,7 @@
     <div><label>Note</label><input type="text" name="note"></div>
     <div><button type="submit">Record</button></div>
   </form>
-  <p class="notice">The week date snaps to its Sunday. Partial deposits are fine — rows for a week add up.</p>
+  <p class="notice">Pick any day of the week — it is filed under the week ending that Saturday (weeks run Sun–Sat; the invoice goes out Saturday). Partial deposits are fine — rows for a week add up.</p>
 </div>
 
 <% if (!customer.invoice_linked) { %>
@@ -193,23 +193,46 @@
   <h2>Add a claim week</h2>
   <form method="POST" action="/ar/claims" class="form-row" style="flex-wrap:wrap;gap:10px;align-items:end">
     <input type="hidden" name="customer_id" value="<%= customer.id %>">
-    <div><label>Week of</label><input type="date" name="week_of" required value="<%= todayISO %>"></div>
+    <div><label>Week ending (Sat)</label><input type="date" name="week_of" required value="<%= todayISO %>" data-week-sat="claimWeekSat"><div id="claimWeekSat" class="notice"></div></div>
     <div><label>Claimed amount $</label><input type="number" name="amount" step="0.01" min="0" required></div>
     <div><label>Note</label><input type="text" name="note"></div>
     <div><button type="submit">Add claim</button></div>
   </form>
 </div>
 <% } %>
+<script>
+// Display only: echo the Saturday of the picked week under the week
+// fields above, so the reference day is never ambiguous. The value
+// submitted is unchanged — the server still snaps it to the week's
+// Sunday key for storage and matching, exactly as before.
+(function () {
+  function satISO(v) {
+    var d = new Date(v + 'T00:00:00');
+    if (isNaN(d)) return '';
+    d.setDate(d.getDate() + (6 - d.getDay()));
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  document.querySelectorAll('[data-week-sat]').forEach(function (inp) {
+    var out = document.getElementById(inp.getAttribute('data-week-sat'));
+    if (!out) return;
+    function upd() { out.textContent = inp.value ? ('Week ending Sat ' + satISO(inp.value)) : ''; }
+    inp.addEventListener('change', upd);
+    inp.addEventListener('input', upd);
+    upd();
+  });
+})();
+</script>
 <% } %>
 
 <div class="card">
   <h2>List / deposit records</h2>
   <div class="table-wrap"><table>
-    <tr><th>Date</th><th>For week of</th><th>Kind</th><th class="num">Amount</th><th>Method</th><th>Note</th><% if (canWrite) { %><th></th><% } %></tr>
+    <tr><th>Date</th><th>For week ending (Sat)</th><th>Kind</th><th class="num">Amount</th><th>Method</th><th>Note</th><% if (canWrite) { %><th></th><% } %></tr>
     <% entries.forEach(function (e) { %>
     <tr>
       <td><%= e.entry_date %></td>
-      <td><%= e.week_of %></td>
+      <td><%= e.weekLabel %></td>
       <td><%= e.kind === 'listed' ? 'Listed' : 'Received' %></td>
       <td class="num"><%= money(e.amount) %></td>
       <td><%= e.method || '' %></td>
@@ -225,10 +248,10 @@
 <div class="card">
   <h2>Manual claim entries</h2>
   <div class="table-wrap"><table>
-    <tr><th>Week of</th><th class="num">Amount</th><th>Note</th><% if (canWrite) { %><th></th><% } %></tr>
+    <tr><th>Week ending (Sat)</th><th class="num">Amount</th><th>Note</th><% if (canWrite) { %><th></th><% } %></tr>
     <% claims.forEach(function (c) { %>
     <tr>
-      <td><%= c.week_of %></td>
+      <td><%= c.weekLabel %></td>
       <td class="num"><%= money(c.amount) %></td>
       <td><%= c.note || '' %></td>
       <% if (canWrite) { %><td class="num"><form method="POST" action="/ar/claims/<%= c.id %>/delete" onsubmit="return confirm('Delete this claim entry?')"><button class="btn secondary small" type="submit">Delete</button></form></td><% } %>
