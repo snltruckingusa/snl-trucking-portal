@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Settlement' }) %>
 <h1>Weekly Settlement</h1>
-<p class="notice">Week: Sunday ~ Saturday (Sun–Sat). Formula: driver pay = (delivered revenue − fuel − insurance $100/day) × applied split. Pay follows delivery — a load counts once it is delivered, whether or not its tickets are confirmed yet. The split follows the tenure ladder (first 3 months 45% → 50% → 55% after 1 year; exempt drivers keep a fixed split). Friday close-out. Settlements are paid 1 week in arrears.<br>
+<p class="notice">Week: Sunday ~ Saturday (Sun–Sat). Formula: driver pay = (delivered revenue − fuel − insurance $100/day) × applied split. Pay follows delivery — a load counts once it is delivered, whether or not its tickets are confirmed yet. From the week of Nov 29, 2026, pay splits into two legs like the PierLink claim: leg 1 counts in the delivery week, leg 2 (with the return fee) in the empty-return week; a container that is not returned carries its leg 2 into the next week. The split follows the tenure ladder (first 3 months 45% → 50% → 55% after 1 year; exempt drivers keep a fixed split). Friday close-out. Settlements are paid 1 week in arrears.<br>
 Weekend rule: Saturday/Sunday loads pay the driver 70% of net when the two-week full-attendance condition is met (judged automatically from the load records) and the owner confirms.<br>
 Downtime pay (truck in repair etc.) is added in full on top of the split pay — it is not split and not reduced by fuel or insurance.</p>
 
@@ -137,17 +137,17 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
 <% } %>
 
 <div class="card">
-  <h2>Statement detail (confirmed loads only)</h2>
+  <h2>Statement detail</h2>
   <% rows.forEach(function(r){ %>
     <h3><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>) <a class="btn small secondary" href="/settlement/statement?week=<%= weekStartISO %>&driver_id=<%= r.driver.id %>" target="_blank">Print / PDF statement</a> <a class="btn small secondary" href="/settlement/monthly?month=<%= weekStartISO.slice(0, 7) %>&driver_id=<%= r.driver.id %>" target="_blank">Monthly summary</a></h3>
         <% if (r.downtimeRows && r.downtimeRows.length) { %><p class="notice" style="margin:4px 0">Downtime / other pay: <% r.downtimeRows.forEach(function(e){ %><%= fmtDate(e.pay_date) %> <%= money(e.amount) %><% if (e.reason) { %> (<%= e.reason %>)<% } %> · <% }); %>— total <b><%= money(r.downtime) %></b>, added in full.</p><% } %>
-    <% if (!r.loads.length) { %><p class="notice">No confirmed loads this week.</p><% } else { %>
+    <% if (!r.loads.length) { %><p class="notice">No counted loads this week.</p><% } else { %>
     <div class="table-wrap"><table>
       <tr><th>Date</th><th>Container</th><th class="num">Rate</th><th class="num">Return</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
       <% r.loads.forEach(function(l){ %>
       <tr>
         <td><%= fmtDate(l.load_date) %></td>
-        <td><%= l.container_no || '' %></td>
+        <td><%= l.container_no || '' %><% if (l.leg === 1) { %><br><span class="notice">Leg 1 (delivery)</span><% } else if (l.leg === 2) { %><br><span class="notice">Leg 2 (return)</span><% } %></td>
         <td class="num"><%= money(l.rate) %></td><td class="num"><%= money(l.return_fee) %></td>
         <td class="num"><%= money(l.prepull) %></td>
         <td class="num"><%= money(l.reefer) %></td>
@@ -170,6 +170,6 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
     </table></div>
     <% } %>
   <% }) %>
-  <p class="notice">Totals match the confirmed revenue above.</p>
+  <p class="notice">Totals match the revenue above.</p>
 </div>
 <%- include('partials/footer') %>
