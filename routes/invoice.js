@@ -279,7 +279,10 @@ function shortDesc(desc) {
   const remarkAt = s.indexOf(' O/W:');
   const addr = remarkAt >= 0 ? s.slice(0, remarkAt) : s;
   const remark = remarkAt >= 0 ? s.slice(remarkAt) : '';
-  const m = addr.match(/,\s*([^,]+),\s*[A-Z]{2}\s+\d{5}/);
+  // The ZIP is optional and the state must end the address: one
+  // stored delivery ("..., Dalton, GA") carries no ZIP and slipped
+  // past the first version of this pattern (found live 2026-11-28).
+  const m = addr.match(/,\s*([^,]+),\s*[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?\s*$/);
   if (!m) return s;
   return m[1].trim() + remark;
 }
@@ -502,6 +505,25 @@ router.get('/', async (req, res) => {
       return res.render('invoice', { ...base, view: 'all', driverParam: 'all' });
     }
 
+    // Driver invoices (Eric, 2026-11-28): the Invoice section holds
+    // TWO documents — the PierLink invoice (weekly claim, money in)
+    // and the driver invoices (weekly statements, money out). This
+    // view lists the week's statements from settlement's computeWeek
+    // (the same numbers the drivers confirm in Settlement), each
+    // opening the existing printable statement.
+    if ((req.query.view || '') === 'drivers') {
+      const cw = await computeWeek(wsISO, null);
+      let confirms = {};
+      try {
+        const c = await query(
+          'SELECT driver_id, confirmed_at, note FROM settlement_confirms WHERE week_start = $1',
+          [wsISO]
+        );
+        c.rows.forEach(r => { confirms[r.driver_id] = r; });
+      } catch (e) { /* confirms table may not exist yet — render without confirm state */ }
+      return res.render('invoice', { ...base, view: 'drivers', stmtRows: cw.rows, confirms });
+    }
+
     // One driver's detail (the original block, reached by drill-down).
     if (driverParam) {
       const block = data.blocks.find(b => b.driver.id === parseInt(driverParam, 10));
@@ -561,6 +583,30 @@ router.get('/claim-list', async (req, res) => {
   } catch (e) {
     console.error('invoice claim-list failed:', e);
     return res.status(500).send('Claim list failed to load. Please try again.');
+  }
+});
+
+// Dedicated print view of the claim list (Eric, 2026-11-28): a
+// standalone document page that renders on screen exactly as it
+// prints (letterhead overview + one sheet per driver), instead of
+// relying on the browser's print rendering of the working page.
+router.get('/claim-list/print', async (req, res) => {
+  try {
+    let wsISO = req.query.week;
+    if (!wsISO || !/^\d{4}-\d{2}-\d{2}$/.test(wsISO) || isNaN(new Date(wsISO + 'T00:00:00'))) {
+      wsISO = toISODate(weekStart(new Date()));
+    } else {
+      wsISO = toISODate(weekStart(new Date(wsISO + 'T00:00:00')));
+    }
+    const canWrite = req.session.user.role === 'admin';
+    const data = await buildClaimList(wsISO, canWrite);
+    return res.render('invoice-claim-print', {
+      ...data, canWrite,
+      weekLabel: 'Week ending Sat ' + data.weekEndISO,
+    });
+  } catch (e) {
+    console.error('invoice claim-list print failed:', e);
+    return res.status(500).send('Claim list print view failed to load. Please try again.');
   }
 });
 
