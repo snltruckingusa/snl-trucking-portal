@@ -16,15 +16,36 @@
      box per driver + a grand-totals box; then exactly one page per
      driver with the leg detail. Landscape, small type, no portal
      chrome. The on-screen layout is unchanged. ---- */
-  @page { size: landscape; margin: 9mm; }
+  @page { size: landscape; margin: 11mm; }
   @media print {
     .topbar, .topnav, .nav, .tabbar, .sidebar, .no-print, .screen-only, .print-hide { display: none !important; }
     .shell, .container { margin: 0 !important; padding: 0 !important; max-width: none !important; width: 100% !important; }
     body { background: #fff !important; }
-    .claim-list { font-size: 10px; color: #111; }
+    /* Print fix (2026-11-28, from Eric's test print): the first
+       printout clipped the left edge and a driver block spilled one
+       line onto a blank page. The content now carries its own inner
+       padding (safe even when the print dialog's margins are set to
+       None), the detail tables use fixed layout with percentage
+       columns so they can never exceed the page, type is a touch
+       smaller, and each driver card is kept on one page. */
+    .claim-list { font-size: 9.5px; color: #111; padding: 0 5mm; box-sizing: border-box; width: 100%; }
     .claim-list .card { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; }
     .claim-list table { width: 100%; border-collapse: collapse; }
-    .claim-list th, .claim-list td { padding: 3px 5px; border-bottom: 1px solid #ccc; }
+    .claim-list th, .claim-list td { padding: 2.5px 4px; border-bottom: 1px solid #ccc; }
+    .driver-card table { table-layout: fixed; }
+    .driver-card table td { word-wrap: break-word; }
+    .driver-card th:nth-child(1) { width: 6.5%; }
+    .driver-card th:nth-child(2) { width: 28%; }
+    .driver-card th:nth-child(3) { width: 7.5%; }
+    .driver-card th:nth-child(4) { width: 6.4%; }
+    .driver-card th:nth-child(5) { width: 6.4%; }
+    .driver-card th:nth-child(6) { width: 5.4%; }
+    .driver-card th:nth-child(7) { width: 6%; }
+    .driver-card th:nth-child(8) { width: 7.6%; }
+    .driver-card th:nth-child(9) { width: 5.4%; }
+    .driver-card th:nth-child(10) { width: 6%; }
+    .driver-card th:nth-child(11) { width: 7%; }
+    .driver-card th:nth-child(12) { width: 7.8%; }
     .claim-list h2 { font-size: 14px; margin: 0 0 4px; }
     .print-overview { display: block; }
     .print-overview .lh { border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 8px; }
@@ -44,12 +65,16 @@
     .ov-grand td { border: none; padding: 2.5px 0; font-size: 11.5px; }
     .ov-grand td.num { text-align: right; }
     .ov-grand .ov-final td { font-size: 14px; font-weight: 700; border-top: 1.5px solid #111; padding-top: 5px; }
-    .driver-card { break-before: page; }
+    .driver-card { break-before: page; break-inside: avoid; }
     .claim-list tr.pending-leg td { background: #fff8e1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 <div class="claim-list">
 <h1 class="screen-only">PierLink — Weekly Claim List</h1>
+<div class="no-print" style="display:flex;gap:8px;margin:12px 0">
+  <a class="btn" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
+  <a class="btn secondary" href="/invoice?week=<%= weekISO %>&view=drivers">Driver Invoices — Statements</a>
+</div>
 <p class="notice screen-only">Leg by leg, the way PierLink's own statements are built: <b>Leg 1</b> pickup → delivery is claimed in the delivery week, <b>Leg 2</b> delivery → empty return in the return week. A container whose empty is still out shows a <b>$0 leg-2 line</b> — not claimed yet, but never forgotten; its amount waits in "Payment for Next week (Mty Not Return)". The <b>Insurance</b> column is PierLink's Help Ins booking ($7.50 per leg) — shown for line-by-line comparison; our claim Total excludes it, as always.</p>
 
 <div class="card no-print">
@@ -58,6 +83,7 @@
     <div><button type="submit">View</button>
       <a class="btn secondary" href="/invoice/claim-list?week=<%= prevWeek %>">← Prev week</a>
       <a class="btn secondary" href="/invoice/claim-list?week=<%= nextWeek %>">Next week →</a>
+      <a class="btn" href="/invoice/claim-list/print?week=<%= weekISO %>" target="_blank" rel="noopener">Print view</a>
       <button class="btn secondary" type="button" onclick="window.print()">Print</button></div>
   </form>
   <p style="margin-top:10px"><b><%= weekLabel %></b> <span class="notice">(<%= weekISO %> ~ <%= weekEndISO %>)</span><% if (week.sent_at) { %> · <span class="badge good">Sent <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %>
