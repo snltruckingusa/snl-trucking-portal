@@ -11,11 +11,43 @@
   .claim-list td.num, .claim-list th.num { text-align: right; }
   .claim-list tr.pending-leg td { color: #8a6d00; background: #fff8e1; }
   .claim-list tr.totals-row td { font-weight: 700; border-top: 2px solid #999; }
-  @media print { .claim-list .card { break-inside: avoid; } }
+  .print-overview { display: none; }
+  /* ---- Print layout (Eric, 2026-11-28): page 1 = overview with one
+     box per driver + a grand-totals box; then exactly one page per
+     driver with the leg detail. Landscape, small type, no portal
+     chrome. The on-screen layout is unchanged. ---- */
+  @page { size: landscape; margin: 9mm; }
+  @media print {
+    .topbar, .topnav, .nav, .tabbar, .sidebar, .no-print, .screen-only, .print-hide { display: none !important; }
+    .shell, .container { margin: 0 !important; padding: 0 !important; max-width: none !important; width: 100% !important; }
+    body { background: #fff !important; }
+    .claim-list { font-size: 10px; color: #111; }
+    .claim-list .card { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; }
+    .claim-list table { width: 100%; border-collapse: collapse; }
+    .claim-list th, .claim-list td { padding: 3px 5px; border-bottom: 1px solid #ccc; }
+    .claim-list h2 { font-size: 14px; margin: 0 0 4px; }
+    .print-overview { display: block; }
+    .print-overview h1 { font-size: 17px; margin: 0 0 2px; }
+    .print-overview .week-line { font-size: 11px; margin-bottom: 10px; }
+    .ov-boxes { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ov-box { border: 1.5px solid #333; border-radius: 6px; padding: 8px 10px; flex: 1 1 0; min-width: 150px; }
+    .ov-box .ov-name { font-size: 12px; font-weight: 700; margin-bottom: 5px; }
+    .ov-box table { width: 100%; }
+    .ov-box td { border: none; padding: 2px 0; }
+    .ov-box td.num { text-align: right; }
+    .ov-box .ov-claim td { font-size: 13px; font-weight: 700; border-top: 1px solid #999; padding-top: 4px; }
+    .ov-grand { border: 2px solid #111; border-radius: 6px; padding: 9px 12px; margin-top: 10px; }
+    .ov-grand table { width: 100%; }
+    .ov-grand td { border: none; padding: 2.5px 0; font-size: 11.5px; }
+    .ov-grand td.num { text-align: right; }
+    .ov-grand .ov-final td { font-size: 14px; font-weight: 700; border-top: 1.5px solid #111; padding-top: 5px; }
+    .driver-card { break-before: page; }
+    .claim-list tr.pending-leg td { background: #fff8e1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 <div class="claim-list">
-<h1>PierLink — Weekly Claim List</h1>
-<p class="notice">Leg by leg, the way PierLink's own statements are built: <b>Leg 1</b> pickup → delivery is claimed in the delivery week, <b>Leg 2</b> delivery → empty return in the return week. A container whose empty is still out shows a <b>$0 leg-2 line</b> — not claimed yet, but never forgotten; its amount waits in "Payment for Next week (Mty Not Return)". The <b>Insurance</b> column is PierLink's Help Ins booking ($7.50 per leg) — shown for line-by-line comparison; our claim Total excludes it, as always.</p>
+<h1 class="screen-only">PierLink — Weekly Claim List</h1>
+<p class="notice screen-only">Leg by leg, the way PierLink's own statements are built: <b>Leg 1</b> pickup → delivery is claimed in the delivery week, <b>Leg 2</b> delivery → empty return in the return week. A container whose empty is still out shows a <b>$0 leg-2 line</b> — not claimed yet, but never forgotten; its amount waits in "Payment for Next week (Mty Not Return)". The <b>Insurance</b> column is PierLink's Help Ins booking ($7.50 per leg) — shown for line-by-line comparison; our claim Total excludes it, as always.</p>
 
 <div class="card no-print">
   <form method="GET" action="/invoice/claim-list" class="form-row" style="align-items:end">
@@ -29,8 +61,39 @@
   · <a href="/invoice?week=<%= weekISO %>&driver=all">Invoice page</a> · <a href="/ar">A/R</a></p>
 </div>
 
+<div class="print-overview">
+  <h1>PierLink — Weekly Claim List · Overview</h1>
+  <p class="week-line"><b><%= weekLabel %></b> (<%= weekISO %> ~ <%= weekEndISO %>) · S&amp;L Trucking LLC</p>
+  <div class="ov-boxes">
+    <% blocks.forEach(function (b) { %>
+    <div class="ov-box">
+      <div class="ov-name"><%= b.driver.name %> <span style="font-weight:400">(#<%= b.driver.truck_number || '' %>)</span></div>
+      <table>
+        <tr><td>Previous unpaid (Mty Return)</td><td class="num"><%= money(b.prevUnpaid) %></td></tr>
+        <tr><td>Insurance (Help Ins memo)</td><td class="num"><%= money(b.insurance) %></td></tr>
+        <tr><td>Next week hold (Mty Not Return)</td><td class="num"><%= money(b.holdTotal) %></td></tr>
+        <% if (b.stillOutTotal > 0) { %><tr><td>Still out from earlier weeks</td><td class="num"><%= money(b.stillOutTotal) %></td></tr><% } %>
+        <tr class="ov-claim"><td>Claim total</td><td class="num"><%= money(b.claim) %></td></tr>
+      </table>
+    </div>
+    <% }) %>
+  </div>
+  <div class="ov-grand">
+    <table>
+      <tr><td>Total (this week's claim)</td><td class="num"><b><%= money(totalClaim) %></b></td></tr>
+      <tr><td>Help Ins (PierLink books on top; not in our claim)</td><td class="num"><%= money(totalInsurance) %></td></tr>
+      <tr><td>Deduct (advance repayment)</td><td class="num">− <%= money(deduct) %></td></tr>
+      <tr><td>S.Total</td><td class="num"><%= money(sTotal) %></td></tr>
+      <tr class="ov-final"><td>Expected deposit (Total + Help Ins − Deduct)</td><td class="num"><%= money(expectedDeposit) %></td></tr>
+      <tr><td>Received</td><td class="num"><%= money(received) %></td></tr>
+      <tr><td>Balance</td><td class="num"><b><%= money(balance) %></b></td></tr>
+    </table>
+  </div>
+  <p style="font-size:10px;margin-top:8px">Detail follows — one page per driver. Leg 1 pickup → delivery is claimed in the delivery week; Leg 2 delivery → empty return in the return week. Containers not yet returned show a $0 leg-2 line and wait in "Next week hold".</p>
+</div>
+
 <% blocks.forEach(function (b) { %>
-<div class="card">
+<div class="card driver-card">
   <h2><%= b.driver.name %> <span class="notice">(#<%= b.driver.truck_number || '' %>)</span></h2>
   <p><b>Previous unpaid amount (Mty Return): <%= money(b.prevUnpaid) %></b> <span class="notice">— return legs of earlier deliveries, claimed on this list</span></p>
   <div class="table-wrap"><table>
@@ -77,7 +140,7 @@
 <% }) %>
 <% if (!blocks.length) { %><div class="card"><p class="notice">No claim legs for this week yet.</p></div><% } %>
 
-<div class="card">
+<div class="card print-hide">
   <h2>Totals</h2>
   <div class="table-wrap"><table>
     <tr><td>Total (this week's claim, legs above)</td><td class="num"><b><%= money(totalClaim) %></b></td></tr>
