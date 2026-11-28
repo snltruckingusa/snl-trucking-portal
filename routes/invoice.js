@@ -265,10 +265,29 @@ function half(v) { return Math.round((num(v) / 2) * 100) / 100; }
 // insurance (a standalone service claim is not a round trip; PierLink
 // pays no subsidy on return-only statement legs either —
 // reconciliation 2026-11-20).
+// Claim-list display (Eric, 2026-11-28): PierLink's statements use
+// compact site codes; ours show the CITY only — the full street
+// address made the list look cluttered. "QCELL(OR1)-Samsung, 3551
+// Corporate Dr, Dalton, GA 30721" -> "Dalton". A remark appended to
+// a line's description (e.g. the HLBU " O/W: ..." computation) is
+// preserved after the city. Text that does not look like an address
+// (manual-line descriptions) passes through unchanged. Display
+// only: the stored description keeps the full address.
+function shortDesc(desc) {
+  const s = String(desc || '');
+  if (!s) return s;
+  const remarkAt = s.indexOf(' O/W:');
+  const addr = remarkAt >= 0 ? s.slice(0, remarkAt) : s;
+  const remark = remarkAt >= 0 ? s.slice(remarkAt) : '';
+  const m = addr.match(/,\s*([^,]+),\s*[A-Z]{2}\s+\d{5}/);
+  if (!m) return s;
+  return m[1].trim() + remark;
+}
+
 function lineLegs(line, load) {
   const base = {
     lineId: line.id, driverId: line.driver_id,
-    description: line.description || (load && (load.load_delivery || load.delivery)) || '',
+    description: shortDesc(line.description || (load && (load.load_delivery || load.delivery)) || ''),
     container: (load && load.container_no) || '',
     truck: (load && load.truck_number) || '',
   };
