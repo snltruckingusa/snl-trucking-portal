@@ -100,7 +100,7 @@
 <% } %>
 
 <% if (typeof pendingLoads !== 'undefined' && pendingLoads.length) { %>
-<h2>Loads not yet counted (pending confirmation)</h2>
+<h2>Loads not yet counted (not yet delivered)</h2>
 <table>
   <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Total</th><th>Status</th></tr>
   <% pendingLoads.forEach(function(l){ %>
@@ -113,7 +113,7 @@
   </tr>
   <% }) %>
 </table>
-<p class="note">These loads are registered for this week but are not confirmed yet, so they are not in the totals below. A load is counted in the week it is confirmed.</p>
+<p class="note">These loads are registered for this week but are not delivered yet, so they are not in the totals below. A load is counted once it is delivered.</p>
 <% } %>
 
 <table class="summary">
