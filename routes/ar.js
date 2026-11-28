@@ -3,10 +3,28 @@
 // Money IN, per customer. Customers are generic (ar_customers); the
 // first is PierLink, whose claims are read LIVE from the invoice
 // system — never copied:
-//   Claimed(week) = SUM over invoice_lines of that claim_week of
-//                   (rate + prepull + reefer + detention + overweight
-//                    + fsc)   — the same lineTotal as routes/invoice.js.
+//   Claimed(week) = SUM over the week's claim-list LEGS (the leg
+//                   split in routes/invoice.js claimHelpers: leg 1
+//                   lands in the delivery week, leg 2 in the return
+//                   week; pending leg 2s are not claimed yet). This
+//                   matches the PierLink claim list Eric sends AND
+//                   PierLink's own leg-by-leg statements, so a week's
+//                   difference can be chased container by container.
 // Other customers keep manual claim weeks in ar_claims.
+//
+// Difference decomposition (2026-11-28): a week's difference
+// (claimed - received) is shown as explained + unexplained parts.
+// Automatic explainers for the invoice-linked customer: the weekly
+// advance Deduct (deposits arrive net of it) and the Help Ins legs
+// PierLink books on top of our claim. On top of those, Eric can
+// record 'adjustment' entries (amount + required note) — a reason
+// that stays displayed with the difference. Adjustment entries never
+// count in Listed/Received sums. Money received for OLD, non-claim
+// items (e.g. the October adjustment debt) does NOT belong in a
+// claim week at all: it is booked under its own manual-claims
+// customer (e.g. "PierLink — Prior Adjustments"), so claim weeks
+// stay clean; a mixed deposit is split into two entries at record
+// time (rows for a week already add up).
 //
 // Weekly remittance matching, at week granularity (Sun–Sat):
 //   Claimed  — what we say the week is worth.
@@ -30,6 +48,13 @@ const {
   requireLogin, num, fmtDate, toISODate, weekStart, weekEnd,
 } = require('../lib/helpers');
 
+// The leg split lives in the invoice module (one source of the money
+// rules); A/R claimed totals must use the identical split or the two
+// sections silently disagree. No require cycle: invoice.js never
+// requires this module.
+const { claimHelpers } = require('./invoice');
+const { lineLegs } = claimHelpers;
+
 const router = express.Router();
 router.use(requireLogin);
 router.use((req, res, next) => {
@@ -39,7 +64,7 @@ router.use((req, res, next) => {
   return res.status(403).send('Forbidden — admin only.');
 });
 
-const ENTRY_KINDS = ['listed', 'received'];
+const ENTRY_KINDS = ['listed', 'received', 'adjustment'];
 const ENTRY_METHODS = ['ach', 'wire', 'check', 'zelle', 'other'];
 const DONUT_COLORS = ['#4f8ff7', '#f5a623', '#3bb273', '#9aa3ad', '#8e6cc8', '#d95f76', '#3aa6a0'];
 
@@ -106,27 +131,54 @@ function weekStatus(w) {
   return { key: 'over', label: 'Over-received', diff };
 }
 
+// Decompose one week's difference (claimed - received) into the
+// explained parts + the unexplained remainder. Items are
+// { label, amount } in difference orientation — the amount of the
+// difference they account for, signed as it appears in the
+// difference. Pure function, exported for tests.
+function decompose(diff, explainedItems) {
+  const explained = r2((explainedItems || []).reduce((a, i) => a + num(i.amount), 0));
+  return { explained, unexplained: r2(num(diff) - explained) };
+}
+
 // Build the week-by-week picture for one customer: claims (invoice or
-// manual), listed/received sums, and — for the invoice-linked
-// customer — the invoice page's own per-line payments as a reference.
+// manual), listed/received sums, deposit dates, recorded difference
+// reasons, and — for the invoice-linked customer — the invoice page's
+// own per-line payments as a reference.
 async function customerWeeks(customer) {
   const byWeek = new Map();
   const row = (wk) => {
-    if (!byWeek.has(wk)) byWeek.set(wk, { week: wk, claimed: 0, listed: 0, received: 0, invoicePaid: 0 });
+    if (!byWeek.has(wk)) byWeek.set(wk, {
+      week: wk, claimed: 0, listed: 0, received: 0, invoicePaid: 0,
+      helpIns: 0, receivedDates: [], adjustments: [],
+    });
     return byWeek.get(wk);
   };
+  const deductByWeek = {};
   if (customer.invoice_linked) {
-    const claims = (await query(
-      `SELECT claim_week AS wk, SUM(rate + prepull + reefer + detention + overweight + fsc) AS claimed
-       FROM invoice_lines GROUP BY claim_week`
+    // Claimed = the week's claim-list legs (identical split to the
+    // PierLink claim list — see claimHelpers in routes/invoice.js).
+    const lines = (await query(
+      `SELECT il.*, l.load_date, l.delivery AS load_delivery, l.progress,
+              l.returned_on, l.container_no, l.truck_number
+       FROM invoice_lines il LEFT JOIN loads l ON l.id = il.load_id`
     )).rows;
-    for (const c of claims) row(asISO(c.wk)).claimed = r2(c.claimed);
+    for (const l of lines) {
+      for (const leg of lineLegs(l, l.load_id ? l : null)) {
+        if (leg.pending || !leg.weekISO) continue;
+        const w = row(leg.weekISO);
+        w.claimed = r2(w.claimed + leg.claim);
+        w.helpIns = r2(w.helpIns + leg.insurance);
+      }
+    }
     const ref = (await query(
       `SELECT il.claim_week AS wk, SUM(ip.amount) AS amt
        FROM invoice_payments ip JOIN invoice_lines il ON il.id = ip.line_id
        GROUP BY il.claim_week`
     )).rows;
     for (const p of ref) row(asISO(p.wk)).invoicePaid = r2(p.amt);
+    const iw = (await query('SELECT week_start, advance_deduct FROM invoice_weeks')).rows;
+    for (const r of iw) deductByWeek[asISO(r.week_start)] = num(r.advance_deduct);
   } else {
     const claims = (await query(
       'SELECT week_of AS wk, SUM(amount) AS claimed FROM ar_claims WHERE customer_id = $1 GROUP BY week_of',
@@ -135,17 +187,45 @@ async function customerWeeks(customer) {
     for (const c of claims) row(asISO(c.wk)).claimed = r2(c.claimed);
   }
   const entries = (await query(
-    'SELECT week_of AS wk, kind, SUM(amount) AS amt FROM ar_entries WHERE customer_id = $1 GROUP BY week_of, kind',
+    'SELECT week_of AS wk, kind, amount, entry_date, note FROM ar_entries WHERE customer_id = $1 ORDER BY entry_date, id',
     [customer.id]
   )).rows;
   for (const e of entries) {
     const w = row(asISO(e.wk));
-    if (e.kind === 'listed') w.listed = r2(e.amt);
-    else if (e.kind === 'received') w.received = r2(e.amt);
+    if (e.kind === 'listed') {
+      w.listed = r2(w.listed + num(e.amount));
+    } else if (e.kind === 'received') {
+      w.received = r2(w.received + num(e.amount));
+      const dISO = asISO(e.entry_date);
+      if (dISO && !w.receivedDates.includes(dISO)) w.receivedDates.push(dISO);
+    } else if (e.kind === 'adjustment') {
+      w.adjustments.push({ amount: r2(e.amount), note: e.note || '', entry_date: asISO(e.entry_date) });
+    }
   }
   const weeks = [...byWeek.values()]
-    .filter(w => w.week && (w.claimed !== 0 || w.listed !== 0 || w.received !== 0 || w.invoicePaid !== 0))
-    .map(w => ({ ...w, weekLabel: weekLabel(w.week), status: weekStatus(w) }));
+    .filter(w => w.week && (w.claimed !== 0 || w.listed !== 0 || w.received !== 0 || w.invoicePaid !== 0 || w.adjustments.length))
+    .map(w => {
+      let status = weekStatus(w);
+      // Difference decomposition: automatic explainers first
+      // (invoice-linked weeks), then Eric's recorded reasons.
+      const items = [];
+      if (customer.invoice_linked) {
+        const ded = deductByWeek[w.week];
+        if (ded) items.push({ label: 'Advance deduct — deposits arrive net of it', amount: r2(ded) });
+        if (w.helpIns) items.push({ label: 'Help Ins PierLink books on top of our claim', amount: r2(-w.helpIns) });
+      }
+      for (const a of w.adjustments) items.push({ label: a.note || 'Recorded reason', amount: a.amount });
+      const dec = decompose(status.diff, items);
+      // A difference that is fully explained is accounted for: it
+      // leaves the open list (but stays visible here, with its
+      // reasons, on the customer page).
+      if (status.key !== 'closed' && status.key !== 'noclaim'
+        && Math.abs(status.diff) > 0.004 && Math.abs(dec.unexplained) <= 0.004) {
+        status = { ...status, key: 'explained', label: 'Explained' };
+      }
+      return { ...w, weekLabel: weekLabel(w.week), status,
+        explainedItems: items, explained: dec.explained, unexplained: dec.unexplained };
+    });
   weeks.sort((a, b) => (a.week < b.week ? 1 : -1)); // newest first
   return weeks;
 }
@@ -156,7 +236,7 @@ function customerTotals(weeks) {
     t.claimed = r2(t.claimed + w.claimed);
     t.listed = r2(t.listed + w.listed);
     t.received = r2(t.received + w.received);
-    if (w.status.key !== 'closed' && (w.claimed > 0 || w.received > 0)) t.openWeeks++;
+    if (w.status.key !== 'closed' && w.status.key !== 'explained' && (w.claimed > 0 || w.received > 0)) t.openWeeks++;
   }
   t.balance = r2(t.claimed - t.received);
   return t;
@@ -182,7 +262,7 @@ router.get('/', async (req, res) => {
       cards.received = r2(cards.received + t.received);
       cards.openWeeks += t.openWeeks;
       for (const w of weeks) {
-        if (w.status.key !== 'closed' && (w.claimed > 0 || w.received > 0)) {
+        if (w.status.key !== 'closed' && w.status.key !== 'explained' && (w.claimed > 0 || w.received > 0)) {
           const ageDays = Math.max(0, Math.round((parseISO(today) - parseISO(w.week)) / 86400000));
           openDiffs.push({ customer: c, ...w, ageWeeks: Math.floor(ageDays / 7) });
         }
@@ -219,6 +299,7 @@ router.get('/', async (req, res) => {
 
     return res.render('ar', {
       title: 'A/R', view: 'home', canWrite, todayISO: today,
+      claimListWeek: toISODate(weekStart(new Date())),
       cards, custRows, openDiffs: openDiffs.slice(0, 15), openDiffCount: openDiffs.length,
       receipts, donut,
       customer: null, weeks: [], entries: [], claims: [],
@@ -257,6 +338,7 @@ router.get('/customer/:id', async (req, res) => {
     }
     return res.render('ar', {
       title: 'A/R', view: 'customer', canWrite, todayISO: todayISO(),
+      claimListWeek: toISODate(weekStart(new Date())),
       cards: null, custRows: [], openDiffs: [], openDiffCount: 0, receipts: [], donut: null,
       customer: { ...customer, totals }, weeks, entries, claims,
       entryKinds: ENTRY_KINDS, entryMethods: ENTRY_METHODS,
@@ -292,13 +374,20 @@ router.post('/entries', async (req, res) => {
     const kind = ENTRY_KINDS.includes(req.body.kind) ? req.body.kind : null;
     const week = snapWeek(req.body.week_of);
     const amount = num(req.body.amount);
+    const note = (req.body.note || '').trim() || null;
     const entryDate = parseISO(req.body.entry_date) ? String(req.body.entry_date).slice(0, 10) : todayISO();
-    if (customerId && kind && week && amount > 0) {
+    // An 'adjustment' entry is a recorded difference reason: any
+    // non-zero amount (signed as it appears in the week's
+    // difference), note required, never summed into Listed/Received.
+    const acceptable = kind === 'adjustment'
+      ? (amount !== 0 && !!note)
+      : (amount > 0);
+    if (customerId && kind && week && acceptable) {
       await query(
         'INSERT INTO ar_entries (customer_id, week_of, kind, amount, entry_date, method, note) VALUES ($1,$2,$3,$4,$5,$6,$7)',
         [customerId, week, kind, amount, entryDate,
          ENTRY_METHODS.includes(req.body.method) ? req.body.method : null,
-         (req.body.note || '').trim() || null]
+         note]
       );
     }
     return res.redirect(back);
@@ -355,4 +444,4 @@ router.post('/claims/:id/delete', async (req, res) => {
 
 module.exports = router;
 // Exported for tests, same pattern as routes/settlement.js computeWeek.
-module.exports.arHelpers = { weekStatus, customerTotals, snapWeek, asISO, parseISO, weekEndISO, weekLabel };
+module.exports.arHelpers = { weekStatus, customerTotals, snapWeek, asISO, parseISO, weekEndISO, weekLabel, decompose, customerWeeks };
