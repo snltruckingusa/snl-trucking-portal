@@ -46,6 +46,15 @@
       <% if (c.who === 'Driver') { %>
       <form class="bi-form" method="POST" action="/documents/upload" enctype="multipart/form-data">
         <input type="hidden" name="category" value="<%= c.key %>">
+        <% if (c.doc) { %>
+        <div style="border-left:4px solid #b26a00;padding:6px 10px;margin-bottom:8px">
+          <span class="badge warn">Already registered</span>
+          <a href="/documents/<%= c.doc.id %>/download">View the registered document</a>
+          <span class="notice">— <%= c.doc.original_name %> · uploaded <%= fmtDate(c.doc.uploaded_at) %><% if (c.doc.expires_on) { %> · valid until <b><%= fmtDate(c.doc.expires_on) %></b><% } %> · <%= c.doc.status === 'pending' ? 'Pending' : 'On file' %></span><br>
+          <span class="notice">Your file already has this document. Only add another one if something changed — tell the owner why:</span><br>
+          <label class="notice">Reason for the new upload <input type="text" name="upload_reason" required placeholder="e.g. renewed card, corrected copy"></label>
+        </div>
+        <% } %>
         <input type="file" name="file" required>
         <% if (c.expires) { %><label class="notice">Expiry date (optional) <input type="date" name="expires_on" title="Expiry date — it is printed on the card; adding it turns on renewal alerts"></label><% } %>
         <button class="btn small" type="submit"><%= c.doc ? 'Upload new' : 'Upload' %></button>
@@ -54,16 +63,48 @@
     </div>
     <% }) %>
   </div>
+  <% var recByCat = {}; docs.forEach(function(d){ if (!d.is_duplicate && !recByCat[d.category]) recByCat[d.category] = { id: d.id, name: d.original_name, uploaded: fmtDate(d.uploaded_at), expires: d.expires_on ? fmtDate(d.expires_on) : '', status: d.status }; }); %>
   <form method="POST" action="/documents/upload" enctype="multipart/form-data">
     <div class="form-row">
-      <div><label>Document type</label><select name="category">
+      <div><label>Document type</label><select name="category" id="doc-cat-select">
         <% Object.keys(categories).forEach(function(k){ %><option value="<%= k %>"><%= categories[k] %></option><% }) %>
       </select></div>
       <div><label>File (photo or PDF)</label><input type="file" name="file" required></div>
       <div><label>Expires on</label><input type="date" name="expires_on"></div>
     </div>
+    <div id="dup-guard-box" style="display:none;border-left:4px solid #b26a00;padding:8px 10px;margin-top:10px">
+      <span class="badge warn">Already registered</span> <span id="dup-guard-text"></span><br>
+      <a id="dup-guard-view" href="#">View the registered document</a><br>
+      <label style="display:block;margin-top:6px">Why is a new one needed? <input type="text" id="dup-reason" name="upload_reason" placeholder="e.g. renewed card, corrected copy" style="width:100%"></label>
+    </div>
     <div style="margin-top:12px"><button type="submit">Upload</button></div>
   </form>
+  <script>
+  (function(){
+    var OCC = <%- JSON.stringify(recByCat).replace(/</g, '\\u003c') %>;
+    var sel = document.getElementById('doc-cat-select');
+    var box = document.getElementById('dup-guard-box');
+    var txt = document.getElementById('dup-guard-text');
+    var view = document.getElementById('dup-guard-view');
+    var reason = document.getElementById('dup-reason');
+    if (!sel || !box) return;
+    function upd(){
+      var rec = OCC[sel.value];
+      if (rec) {
+        box.style.display = '';
+        txt.textContent = '— ' + rec.name + ' · uploaded ' + rec.uploaded + (rec.expires ? ' · valid until ' + rec.expires : '') + ' · ' + (rec.status === 'pending' ? 'Pending' : 'On file') + '. Only add another one if something changed.';
+        view.href = '/documents/' + rec.id + '/download';
+        reason.required = true;
+      } else {
+        box.style.display = 'none';
+        reason.required = false;
+        reason.value = '';
+      }
+    }
+    sel.addEventListener('change', upd);
+    upd();
+  })();
+  </script>
   <p class="notice">Set the expiry date for anything that expires — CDL, medical card, TWIC. New uploads are marked <b>Pending</b> until the owner checks them.</p>
   <% if (!docs.length) { %><p class="notice">No documents yet.</p><% } else { %>
   <div class="table-wrap"><table>
@@ -75,7 +116,7 @@
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
       <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
-      <td><% if ((doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a> <% } %><form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form></td>
+      <td><% if (canSign(doc.category) && (doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %></td>
     </tr>
     <% }) %>
   </table></div>
@@ -121,6 +162,7 @@
   <% pendingDocs.forEach(function(doc){ %>
   <div style="border-top:1px solid #eee;padding:10px 0">
     <b>Document — <%= doc.driver_name %></b> (#<%= doc.truck_number || '' %>) · <%= categories[doc.category] || doc.category %> · <a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a> · uploaded <%= fmtDate(doc.uploaded_at) %><% if (doc.expires_on) { %> · expires <%= fmtDate(doc.expires_on) %><% } %>
+    <% if (doc.upload_reason) { %><br><span class="badge warn">Reason for this upload</span> <%= doc.upload_reason %><% } %>
     <div style="margin-top:6px">
       <form class="inline" method="POST" action="/documents/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form>
       <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form>
@@ -173,9 +215,9 @@
       <td><a href="/documents/<%= doc.id %>/download"><%= doc.original_name %></a></td>
       <td><%= fmtDate(doc.uploaded_at) %></td>
       <td><% if (doc.expires_on) { %><%= fmtDate(doc.expires_on) %><% var xi = expiryInfo(doc.expires_on); if (xi) { %> <span class="badge <%= xi.cls %>"><%= xi.label %></span><% } %><% } else { %>—<% } %></td>
-      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %></td>
+      <td><% if (doc.status === 'pending') { %><span class="badge warn">Pending</span><% } else { %>On file<% } %><% if (doc.is_duplicate) { %> <span class="badge">Duplicate</span><% } %><% if (doc.signed_by) { %> <span class="badge ok">Signed</span><% } %><% if (doc.upload_reason) { %><br><span class="badge warn">Reason</span> <span class="notice"><%= doc.upload_reason %></span><% } %></td>
       <td>
-        <% if ((doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %>
+        <% if (canSign(doc.category) && (doc.mime_type || '').indexOf('pdf') !== -1 && !doc.signed_by && (doc.original_name || '').indexOf('(signed') === -1) { %><a class="btn small" href="/documents/<%= doc.id %>/sign">Sign</a><% } %>
         <% if (doc.status === 'pending') { %><form class="inline" method="POST" action="/documents/<%= doc.id %>/confirm"><button class="btn small" type="submit">Confirm</button></form><% } %>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/duplicate"><button class="btn small" type="submit"><%= doc.is_duplicate ? 'Unmark duplicate' : 'Mark duplicate' %></button></form>
         <form class="inline" method="POST" action="/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete this document?')"><button class="btn small danger" type="submit">Delete</button></form>
