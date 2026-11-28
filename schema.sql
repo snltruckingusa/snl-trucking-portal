@@ -674,3 +674,9 @@ CREATE TABLE IF NOT EXISTS settlement_confirms (
   note_at TIMESTAMPTZ,
   UNIQUE (driver_id, week_start)
 );
+
+-- Delivery-date stamp (2026-11-28): both clocks cut by the delivery
+-- week — driver pay and claim leg 1 attribute to the week the load
+-- was DELIVERED, not the week it was picked up. Stamped when the
+-- progress advances to delivered; older loads fall back to load_date.
+ALTER TABLE loads ADD COLUMN IF NOT EXISTS delivered_on DATE;
