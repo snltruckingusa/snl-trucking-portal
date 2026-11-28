@@ -66,17 +66,17 @@
 </div>
 <p class="sub">Status: <%= r.saved ? (r.saved.status === 'closed' ? 'Closed' : 'Open') : 'Not closed' %></p>
 
-<h2>Loads (confirmed only)</h2>
+<h2>Loads</h2>
 <% if (!r.loads.length) { %>
-<p>No confirmed loads this week.</p>
+<p>No counted loads this week.</p>
 <% } else { %>
 <table>
-  <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Rate</th><th class="num">Return</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
+  <tr><th>Date</th><th>Container · City</th><th>Leg</th><th class="num">Rate</th><th class="num">Return</th><th class="num">Prepull</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">Overweight</th><th class="num">FSC</th><th class="num">Total</th></tr>
   <% r.loads.forEach(function(l){ %>
   <tr>
-    <td><%= fmtDate(l.load_date) %></td>
-    <td><%= l.container_no || '' %></td>
-    <td><%= l.delivery || '' %></td>
+    <td><%= fmtDate(l.entry_date || l.load_date) %></td>
+    <td><%= l.disp || ((l.container_no || '') + (l.delivery ? ' · ' + l.delivery : '')) %></td>
+    <td><%= l.leg === 1 ? 'Leg 1' : (l.leg === 2 ? 'Leg 2' : 'Full') %></td>
     <td class="num"><%= money(l.rate) %></td><td class="num"><%= money(l.return_fee) %></td>
     <td class="num"><%= money(l.prepull) %></td>
     <td class="num"><%= money(l.reefer) %></td>
@@ -97,6 +97,22 @@
     <td class="num"><b><%= money(r.revenue) %></b></td>
   </tr>
 </table>
+<% } %>
+
+<% if (typeof leg2Pending !== 'undefined' && leg2Pending.length) { %>
+<h2>Return leg not yet counted</h2>
+<table>
+  <tr><th>Container · City</th><th>Delivered</th><th class="num">Leg 2 amount</th><th>Status</th></tr>
+  <% leg2Pending.forEach(function(p){ %>
+  <tr>
+    <td><%= p.disp %></td>
+    <td><%= fmtDate(p.deliveredISO) %></td>
+    <td class="num"><%= money(p.amount) %></td>
+    <td>Counts in the week the empty is returned</td>
+  </tr>
+  <% }) %>
+</table>
+<p class="note">These loads are delivered, so leg 1 is counted above. Leg 2 — the other half plus the return fee — is counted in the week the empty container is returned. It is not lost; it carries into that week.</p>
 <% } %>
 
 <% if (typeof pendingLoads !== 'undefined' && pendingLoads.length) { %>
@@ -147,6 +163,9 @@
 <p class="note">Fuel standard for your lanes: <%= r.fuelStd.stdGallons %> gal. You used <%= r.fuelStd.excessGal >= 0 ? r.fuelStd.excessGal + ' gal over' : Math.abs(r.fuelStd.excessGal) + ' gal under' %> the standard<% if (r.fuelStd.excessGal >= 0) { %> (<%= money(r.fuelStd.excessCost) %>; your share <%= money(r.fuelStd.driverShare) %>)<% } else { %> (saved <%= money(-r.fuelStd.excessCost) %>)<% } %>. Miles: <%= r.miles %> · MPG: <%= r.mpg === null ? '—' : r.mpg %><% if (r.mpg2w !== null && r.mpg2w !== undefined) { %> · 2-week avg MPG: <%= r.mpg2w %><% } %>.</p>
 <% } %>
 <% if (r.downtimeRows && r.downtimeRows.length) { %><p class="note">Downtime pay: <% r.downtimeRows.forEach(function(e){ %><%= fmtDate(e.pay_date) %> — <%= money(e.amount) %><% if (e.reason) { %> (<%= e.reason %>)<% } %>; <% }); %></p><% } %>
-<p class="note">This statement covers confirmed loads only. Settlements are paid 1 week in arrears. Questions: contact the owner.</p>
+<% if (typeof showLegNotice !== 'undefined' && showLegNotice) { %>
+<p class="note"><b>Notice:</b> Loads delivered this week (<%= fmtUS(weekStartISO) %>–<%= fmtUS(weekEndISO) %>) but not yet returned have been paid in full in this statement. From next week, starting <%= fmtUS(payLegStart) %>, pay follows the same two-leg method as PierLink: leg 1 is paid in the delivery week, and leg 2, including the return fee, is paid in the week the empty is returned. A container that is not returned carries its leg 2 into the next week.</p>
+<% } %>
+<p class="note">Pay follows delivery: a load counts once it is delivered. Settlements are paid 1 week in arrears. Questions: contact the owner.</p>
 </body>
 </html>
