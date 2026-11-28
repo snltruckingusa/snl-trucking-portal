@@ -29,7 +29,7 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
 
 <div class="card">
   <div class="table-wrap"><table>
-    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th><% if (isAdmin) { %><th class="num">Company</th><% } %><th class="num">Miles / Gallons</th><th class="num">MPG</th><th>Status</th><th></th></tr>
+    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Net</th><th class="num">Driver pay</th><% if (isAdmin) { %><th class="num">Company</th><% } %><th class="num">Miles / Gallons</th><th class="num">MPG</th><th>Status</th><th>Driver confirm</th><th></th></tr>
     <% rows.forEach(function(r){ %>
     <tr class="<%= r.saved && r.saved.status === 'closed' ? 'closed' : '' %>">
       <td><%= r.driver.name %> (#<%= r.driver.truck_number || '' %>)<br><span class="notice"><%= r.daysWorked %> days worked · <%= r.splitPct %>% applied</span>
@@ -57,6 +57,12 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
       </td>
       <td>
         <% if (r.saved) { %><span class="badge <%= r.saved.status %>"><%= r.saved.status === 'closed' ? 'Closed' : 'Open' %></span><% } else { %><span class="badge open">Not closed</span><% } %>
+      </td>
+      <td>
+        <% var c = (typeof confirms !== 'undefined' && confirms) ? confirms[r.driver.id] : null; %>
+        <% if (c && c.confirmed_at) { %><span class="badge good">Confirmed ✓</span><br><span class="notice"><%= new Date(c.confirmed_at).toLocaleString('en-US') %></span><% if (c.note) { %><br><span class="notice">Question: <%= c.note %></span><% } %>
+        <% } else if (c && c.note) { %><span class="badge warn">Question asked</span><br><span class="notice"><%= c.note %></span>
+        <% } else { %><span class="badge open">Not confirmed</span><% } %>
       </td>
       <td>
         <% if (isAdmin) { %>
@@ -89,6 +95,27 @@ Downtime pay (truck in repair etc.) is added in full on top of the split pay —
   </div>
   <% } %>
 </div>
+
+<% if (scopedDriverId && rows.length) { var me = rows[0]; var mc = (typeof confirms !== 'undefined' && confirms) ? confirms[me.driver.id] : null; %>
+<div class="card">
+  <h2>Confirm your settlement</h2>
+  <% if (mc && mc.confirmed_at) { %>
+  <p><span class="badge good">Confirmed ✓</span> You confirmed this week's settlement on <%= new Date(mc.confirmed_at).toLocaleString('en-US') %>. If anything still looks wrong, send a question below — asking a question clears the confirmation until it is settled.</p>
+  <% } else { %>
+  <p>Please check your loads (detail below), your fuel and your insurance, then confirm. This week's pay: <b><%= money(me.driverPay) %></b> <span class="notice">(revenue <%= money(me.revenue) %> − fuel <%= money(me.fuelCost) %> − insurance <%= money(me.insurance) %>)</span>. Full detail: use "Print / PDF statement" below.</p>
+  <form method="POST" action="/settlement/confirm">
+    <input type="hidden" name="week" value="<%= weekStartISO %>">
+    <button type="submit">Confirm this week's settlement</button>
+  </form>
+  <% } %>
+  <% if (mc && mc.note) { %><p class="notice">Your question: "<%= mc.note %>"</p><% } %>
+  <form method="POST" action="/settlement/question" style="margin-top:10px">
+    <input type="hidden" name="week" value="<%= weekStartISO %>">
+    <div><label>Question about this week's settlement</label><input type="text" name="note" placeholder="e.g. Fuel on 11/25 looks wrong" style="width:100%"></div>
+    <div style="margin-top:6px"><button class="btn secondary" type="submit">Send question instead</button></div>
+  </form>
+</div>
+<% } %>
 
 <% if (isAdmin) { %>
 <div class="card">
