@@ -218,6 +218,20 @@ async function buildInvoice(weekISO) {
 const HELP_INS_LEG = 7.5;
 const HELP_INS_TRUCKS = ['100', '101', '200', '201'];
 
+// Claim baseline (Eric, 2026-11-28): weeks before 2026-11-22 were
+// claimed through Eric's Excel and stay sealed as their own weeks —
+// last week's unpaid is last week's, carried in that week's own A/R
+// row, and never rolls into a later week's claim as a lump sum. The
+// only carry-over is a container whose empty is still out, and its
+// return leg is claimed in the week the return actually happens —
+// the same shape as PierLink's own statements. Without this cut, the
+// November catch-up's entry-date returned_on stamps would sweep
+// $21,000 of already-submitted return legs into the baseline week's
+// list (a double claim). The one genuine open chain (Darrell
+// MRSU6826315 return leg $750 + one Brinceson return leg $787.50)
+// re-enters once, as manual lines in the baseline week itself.
+const CLAIM_BASELINE_WEEK = '2026-11-22';
+
 function sundayOf(iso) {
   if (!iso) return null;
   const d = new Date(iso + 'T00:00:00');
@@ -314,6 +328,7 @@ async function buildClaimList(weekISO, canWrite) {
     let prevUnpaid = 0, claim = 0, insurance = 0, holdTotal = 0, stillOutTotal = 0;
     for (const l of lines) {
       if (l.driver_id !== d.id) continue;
+      if (fmtDate(l.claim_week) < CLAIM_BASELINE_WEEK) continue; // sealed pre-baseline history (claimed via Excel)
       const legs = lineLegs(l, l.load_id ? l : null);
       for (const leg of legs) {
         if (leg.manual) {
@@ -650,4 +665,4 @@ router.post('/week', async (req, res) => {
 module.exports = router;
 // Exported for A/R (leg-based claimed totals must use the identical
 // split — one source) and for tests, same pattern as settlement.js.
-module.exports.claimHelpers = { lineLegs, lineTotal, buildClaimList, HELP_INS_LEG, HELP_INS_TRUCKS };
+module.exports.claimHelpers = { lineLegs, lineTotal, buildClaimList, HELP_INS_LEG, HELP_INS_TRUCKS, CLAIM_BASELINE_WEEK };
