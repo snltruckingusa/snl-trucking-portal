@@ -1,0 +1,94 @@
+<%# PierLink weekly claim list — the Saturday send sheet, leg by leg
+    (편도). One row per one-way leg: leg 1 pickup -> delivery lands in
+    the delivery week, leg 2 delivery -> empty return lands in the
+    return week. A delivered-but-not-returned load also shows a $0
+    leg-2 placeholder (container visible, "not claimed yet") so no
+    container is ever forgotten. The Insurance column is PierLink's
+    $7.50/leg Help Ins booking — a memo: Eric's claim Total excludes
+    it by design; it re-enters only in the "expected deposit" line. %>
+<%- include('partials/header', { title: 'PierLink Claim List' }) %>
+<style>
+  .claim-list td.num, .claim-list th.num { text-align: right; }
+  .claim-list tr.pending-leg td { color: #8a6d00; background: #fff8e1; }
+  .claim-list tr.totals-row td { font-weight: 700; border-top: 2px solid #999; }
+  @media print { .claim-list .card { break-inside: avoid; } }
+</style>
+<div class="claim-list">
+<h1>PierLink — Weekly Claim List</h1>
+<p class="notice">Leg by leg, the way PierLink's own statements are built: <b>Leg 1</b> pickup → delivery is claimed in the delivery week, <b>Leg 2</b> delivery → empty return in the return week. A container whose empty is still out shows a <b>$0 leg-2 line</b> — not claimed yet, but never forgotten; its amount waits in "Payment for Next week (Mty Not Return)". The <b>Insurance</b> column is PierLink's Help Ins booking ($7.50 per leg) — shown for line-by-line comparison; our claim Total excludes it, as always.</p>
+
+<div class="card no-print">
+  <form method="GET" action="/invoice/claim-list" class="form-row" style="align-items:end">
+    <div><label>Week (any day)</label><input type="date" name="week" value="<%= weekISO %>"></div>
+    <div><button type="submit">View</button>
+      <a class="btn secondary" href="/invoice/claim-list?week=<%= prevWeek %>">← Prev week</a>
+      <a class="btn secondary" href="/invoice/claim-list?week=<%= nextWeek %>">Next week →</a>
+      <button class="btn secondary" type="button" onclick="window.print()">Print</button></div>
+  </form>
+  <p style="margin-top:10px"><b><%= weekLabel %></b> <span class="notice">(<%= weekISO %> ~ <%= weekEndISO %>)</span><% if (week.sent_at) { %> · <span class="badge good">Sent <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %>
+  · <a href="/invoice?week=<%= weekISO %>&driver=all">Invoice page</a> · <a href="/ar">A/R</a></p>
+</div>
+
+<% blocks.forEach(function (b) { %>
+<div class="card">
+  <h2><%= b.driver.name %> <span class="notice">(#<%= b.driver.truck_number || '' %>)</span></h2>
+  <p><b>Previous unpaid amount (Mty Return): <%= money(b.prevUnpaid) %></b> <span class="notice">— return legs of earlier deliveries, claimed on this list</span></p>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Container / Delivery</th><th>Leg</th><th class="num">Rate</th><th class="num">Return</th><th class="num">P/P</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">O/W</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Total</th></tr>
+    <% b.rows.forEach(function (r) { %>
+    <% if (r.pending) { %>
+    <tr class="pending-leg">
+      <td><%= fmtDate(r.dateISO) %></td>
+      <td><%= r.container || '' %> · <%= r.description || '' %><br><span class="badge warn">Empty not returned — not claimed yet</span></td>
+      <td>Leg 2<br><span class="notice">Delivery → Return</span></td>
+      <td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td>
+    </tr>
+    <% } else { %>
+    <tr>
+      <td><%= fmtDate(r.dateISO) %></td>
+      <td><%= r.container || '' %><% if (r.description) { %> · <%= r.description %><% } %><% if (r.manual) { %><br><span class="notice">Manual claim</span><% } %></td>
+      <td><% if (r.manual) { %>—<% } else if (r.leg === 1) { %>Leg 1<br><span class="notice">Pickup → Delivery</span><% } else { %>Leg 2<br><span class="notice">Delivery → Return</span><% } %></td>
+      <td class="num"><%= money(r.rate) %></td>
+      <td class="num"><%= money(r.returnFee) %></td>
+      <td class="num"><%= money(r.prepull) %></td>
+      <td class="num"><%= money(r.reefer) %></td>
+      <td class="num"><%= money(r.detention) %></td>
+      <td class="num"><%= money(r.overweight) %></td>
+      <td class="num"><%= money(r.fsc) %></td>
+      <td class="num"><%= money(r.insurance) %></td>
+      <td class="num"><b><%= money(r.claim) %></b></td>
+    </tr>
+    <% } %>
+    <% }) %>
+    <% if (!b.rows.length) { %><tr><td colspan="12" class="notice">No legs claimed this week.</td></tr><% } %>
+    <tr class="totals-row">
+      <td colspan="3">Total — <%= b.driver.name %></td>
+      <td class="num" colspan="8">Insurance (PierLink memo): <%= money(b.insurance) %></td>
+      <td class="num"><%= money(b.claim) %></td>
+    </tr>
+  </table></div>
+  <p style="margin-top:8px"><b>Payment for Next week (Mty Not Return): <%= money(b.holdTotal) %></b> <span class="notice">— leg-2 amounts of the $0 containers above; each appears with real amounts on the list for the week its empty return is confirmed</span></p>
+  <% if (b.stillOut.length) { %>
+  <p class="notice" style="color:#8a6d00"><b>Still out from earlier weeks (not claimed yet):</b>
+    <% b.stillOut.forEach(function (r) { %><br>· <%= r.container || '' %> · <%= r.description || '' %> — delivered <%= fmtDate(r.dateISO) %>, leg 2 of <%= money(r.claim) %> still to claim<% }) %>
+    <br>Still-out total: <b><%= money(b.stillOutTotal) %></b></p>
+  <% } %>
+</div>
+<% }) %>
+<% if (!blocks.length) { %><div class="card"><p class="notice">No claim legs for this week yet.</p></div><% } %>
+
+<div class="card">
+  <h2>Totals</h2>
+  <div class="table-wrap"><table>
+    <tr><td>Total (this week's claim, legs above)</td><td class="num"><b><%= money(totalClaim) %></b></td></tr>
+    <tr><td>Help Ins — Insurance column total (PierLink books this on top; not in our claim)</td><td class="num"><%= money(totalInsurance) %></td></tr>
+    <tr><td>Deduct (advance repayment)</td><td class="num">− <%= money(deduct) %></td></tr>
+    <tr><td><b>S.Total</b></td><td class="num"><b><%= money(sTotal) %></b></td></tr>
+    <tr><td>Expected deposit if PierLink books Help Ins in full (Total + Help Ins − Deduct)</td><td class="num"><%= money(expectedDeposit) %></td></tr>
+    <tr><td>Received<% if (receivedAR > 0) { %> (from A/R deposits)<% } %></td><td class="num"><%= money(received) %></td></tr>
+    <tr><td><b>Balance</b></td><td class="num"><b><%= money(balance) %></b></td></tr>
+  </table></div>
+  <p class="notice">Check PierLink's returned list container by container against the legs above — a missing $7.50 in their leg amount is a missing insurance leg; a missing leg row is an unclaimed leg. Mark the week Sent on the Invoice page when this list goes out.</p>
+</div>
+</div>
+<%- include('partials/footer') %>
