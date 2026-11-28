@@ -398,6 +398,12 @@
               <div><label>FSC ($)</label><input name="fsc" type="number" step="0.01" value="<%= l.fsc %>"></div>
               <div><label>Miles</label><input name="miles" type="number" step="0.1" value="<%= l.miles %>"></div>
             </div>
+            <div class="groupbox">
+              <div class="gb-title">4 — Actual dates (corrections)</div>
+              <div><label>Delivered date</label><input type="date" name="delivered_on" value="<%= l.delivered_on ? fmtDate(l.delivered_on) : '' %>"></div>
+              <div><label>Returned date</label><input type="date" name="returned_on" value="<%= l.returned_on ? fmtDate(l.returned_on) : '' %>"></div>
+              <div class="notice">Leave blank to keep the recorded date. Set these to the ticket dates when a load was registered late — pay weeks, claim weeks and insurance days follow these dates.</div>
+            </div>
             <div><label>Status</label><select name="status">
               <option value="pending" <%= l.status === 'pending' ? 'selected' : '' %>>Pending</option>
               <option value="confirmed" <%= l.status === 'confirmed' ? 'selected' : '' %>>Confirmed</option>
