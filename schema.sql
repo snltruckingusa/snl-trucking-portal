@@ -659,3 +659,18 @@ ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS return_fee NUMERIC(10,2) NOT 
 -- ('listed'/'received') satisfy the widened check.
 ALTER TABLE ar_entries DROP CONSTRAINT IF EXISTS ar_entries_kind_check;
 ALTER TABLE ar_entries ADD CONSTRAINT ar_entries_kind_check CHECK (kind IN ('listed','received','adjustment'));
+
+-- Driver settlement confirmation (2026-11-28): a driver reviews his
+-- own weekly settlement in the portal and either confirms it or
+-- leaves a question note for the owner. One row per driver-week;
+-- asking a question clears confirmed_at (he is not confirming
+-- until the question is settled and he confirms again).
+CREATE TABLE IF NOT EXISTS settlement_confirms (
+  id SERIAL PRIMARY KEY,
+  driver_id INT NOT NULL,
+  week_start DATE NOT NULL,
+  confirmed_at TIMESTAMPTZ,
+  note TEXT,
+  note_at TIMESTAMPTZ,
+  UNIQUE (driver_id, week_start)
+);
