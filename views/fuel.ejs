@@ -125,7 +125,7 @@
     <% }) %>
     <% if (!breakdown.length) { %><tr><td colspan="5" class="notice">No fuel recorded this week.</td></tr><% } %>
   </table></div>
-  <p class="notice">Open a <%= viewMode === 'truck' ? 'truck' : 'driver' %> for the entry-by-entry list (with Delete).</p>
+  <p class="notice">Open a <%= viewMode === 'truck' ? 'truck' : 'driver' %> for the entry-by-entry list (with Edit / Delete).</p>
 </div>
 
 <p class="notice">TCS $/gal = <b>Total $ / gallons</b> — calculated automatically when you save. Enter the Total $ exactly as paid; it is stored as-is.</p>
@@ -169,6 +169,7 @@
       <td class="num"><%= f.tcs_price %></td>
       <td class="num"><%= money(f.cost) %></td>
       <td>
+        <a class="btn small" href="/fuel/<%= f.id %>/edit">Edit</a>
         <form class="inline" method="POST" action="/fuel/<%= f.id %>/delete" onsubmit="return confirm('Delete this record?')"><button class="btn small danger" type="submit">Delete</button></form>
       </td>
     </tr>
@@ -218,6 +219,7 @@
       <td class="num"><%= f.tcs_price %></td>
       <td class="num"><%= money(f.cost) %></td>
       <td>
+        <a class="btn small" href="/fuel/<%= f.id %>/edit">Edit</a>
         <form class="inline" method="POST" action="/fuel/<%= f.id %>/delete" onsubmit="return confirm('Delete this record?')"><button class="btn small danger" type="submit">Delete</button></form>
       </td>
     </tr>
