@@ -27,7 +27,7 @@
 const express = require('express');
 const { query } = require('../db');
 const {
-  requireLogin, num, fmtDate, toISODate, weekStart,
+  requireLogin, num, fmtDate, toISODate, weekStart, weekEnd,
 } = require('../lib/helpers');
 
 const router = express.Router();
@@ -65,6 +65,24 @@ function snapWeek(v) {
   const d = parseISO(v);
   if (!d) return null;
   return toISODate(weekStart(d));
+}
+
+// Display only (Eric, 2026-11-28): weeks are STORED and matched by
+// their Sunday — that is the key invoice_lines.claim_week and
+// ar_entries.week_of carry, and it does not change. But Eric's week
+// is referred to by its ENDING Saturday (the invoice goes out
+// Saturday), because a bare Sunday label is ambiguous — it can be
+// read as the Sunday that opens this week or the following Sunday.
+// Labels are derived from the stored Sunday at render time; no
+// stored data is rewritten.
+function weekEndISO(sundayISO) {
+  const d = parseISO(sundayISO);
+  if (!d) return null;
+  return toISODate(weekEnd(d));
+}
+function weekLabel(sundayISO) {
+  const sat = weekEndISO(sundayISO);
+  return sat ? ('Week ending Sat ' + sat) : (sundayISO || '');
 }
 
 // The PierLink customer row is ensured at runtime (schema.sql carries
@@ -127,7 +145,7 @@ async function customerWeeks(customer) {
   }
   const weeks = [...byWeek.values()]
     .filter(w => w.week && (w.claimed !== 0 || w.listed !== 0 || w.received !== 0 || w.invoicePaid !== 0))
-    .map(w => ({ ...w, status: weekStatus(w) }));
+    .map(w => ({ ...w, weekLabel: weekLabel(w.week), status: weekStatus(w) }));
   weeks.sort((a, b) => (a.week < b.week ? 1 : -1)); // newest first
   return weeks;
 }
@@ -171,13 +189,16 @@ router.get('/', async (req, res) => {
       }
     }
     cards.receivable = r2(custRows.reduce((a, c) => a + c.totals.balance, 0));
-    openDiffs.sort((a, b) => (a.week < b.week ? -1 : 1)); // oldest first
+    openDiffs.sort((a, b) => (a.week < b.week ? 1 : -1)); // newest first (Eric, 2026-11-28)
 
     const receipts = (await query(
       `SELECT e.*, c.name AS customer_name FROM ar_entries e
        JOIN ar_customers c ON c.id = e.customer_id
        WHERE e.kind = 'received' ORDER BY e.entry_date DESC, e.id DESC LIMIT 8`
-    )).rows.map(r => ({ ...r, entry_date: asISO(r.entry_date), week_of: asISO(r.week_of) }));
+    )).rows.map(r => {
+      const wk = asISO(r.week_of);
+      return { ...r, entry_date: asISO(r.entry_date), week_of: wk, weekLabel: weekLabel(wk) };
+    });
 
     // Donut: positive customer balances, center = total receivable.
     const positives = custRows.filter(c => c.totals.balance > 0);
@@ -220,13 +241,19 @@ router.get('/customer/:id', async (req, res) => {
     const entries = (await query(
       'SELECT * FROM ar_entries WHERE customer_id = $1 ORDER BY entry_date DESC, id DESC LIMIT 100',
       [customer.id]
-    )).rows.map(r => ({ ...r, entry_date: asISO(r.entry_date), week_of: asISO(r.week_of) }));
+    )).rows.map(r => {
+      const wk = asISO(r.week_of);
+      return { ...r, entry_date: asISO(r.entry_date), week_of: wk, weekLabel: weekLabel(wk) };
+    });
     let claims = [];
     if (!customer.invoice_linked) {
       claims = (await query(
         'SELECT * FROM ar_claims WHERE customer_id = $1 ORDER BY week_of DESC, id DESC',
         [customer.id]
-      )).rows.map(r => ({ ...r, week_of: asISO(r.week_of) }));
+      )).rows.map(r => {
+        const wk = asISO(r.week_of);
+        return { ...r, week_of: wk, weekLabel: weekLabel(wk) };
+      });
     }
     return res.render('ar', {
       title: 'A/R', view: 'customer', canWrite, todayISO: todayISO(),
@@ -328,4 +355,4 @@ router.post('/claims/:id/delete', async (req, res) => {
 
 module.exports = router;
 // Exported for tests, same pattern as routes/settlement.js computeWeek.
-module.exports.arHelpers = { weekStatus, customerTotals, snapWeek, asISO, parseISO };
+module.exports.arHelpers = { weekStatus, customerTotals, snapWeek, asISO, parseISO, weekEndISO, weekLabel };
