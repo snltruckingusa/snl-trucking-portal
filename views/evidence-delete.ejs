@@ -1,0 +1,16 @@
+<%- include('partials/header', { title: 'Delete evidence file' }) %>
+<h1>Delete evidence file</h1>
+<div class="card">
+  <p>Delete this evidence file? The load itself stays — only this one file is removed.</p>
+  <p>
+    <b><%= fmtDate(ev.load_date) %></b> · <%= ev.driver_name %> ·
+    <%= ev.container_no || '' %> → <%= ev.delivery || '' %><br>
+    File: <b><%= ev.stage %></b> · uploaded <%= new Date(ev.created_at).toLocaleString() %><% if (ev.uploaded_by) { %> by <%= ev.uploaded_by %><% } %>
+    · <a href="/loads/evidence/<%= ev.id %>/photo" target="_blank">View photo</a>
+  </p>
+  <form class="inline" method="POST" action="/loads/evidence/<%= ev.id %>/delete">
+    <button class="btn danger" type="submit">Delete file</button>
+  </form>
+  <a class="btn secondary" href="/loads">Cancel</a>
+</div>
+<%- include('partials/footer') %>
