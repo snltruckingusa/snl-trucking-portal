@@ -644,3 +644,7 @@ CREATE TABLE IF NOT EXISTS ap_payments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ap_payments_item_idx ON ap_payments (ap_item_id, paid_on);
+-- Driver-documents rules (2026-11-28): when a driver uploads into a
+-- category that already has a record, the reason they had to give is
+-- stored on the new row so the owner sees it in the Documents Review.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS upload_reason TEXT;
