@@ -1,15 +1,18 @@
 // Weekly settlement (Mon-Sun) + MPG.
 // Per driver, per week:
 //   revenue  = sum(rate + prepull + reefer + detention + overweight + FSC)
-//              over CONFIRMED loads
+//              over DELIVERED loads (driver clock = delivery — Eric,
+//              2026-11-28: pay follows delivery, NOT ticket confirmation;
+//              confirmation is a document control for the PierLink
+//              claim clock only)
 //   fuel     = sum(cost) over fuel purchases in the week
-//   insurance = $100 x days worked (distinct dates with a confirmed load)
+//   insurance = $100 x days worked (distinct dates with a delivered load)
 //   net      = revenue - fuel - insurance
 //   driver pay = net x pay_split%   (default 50%)
 //   company net = net - driver pay
 //   MPG = miles / gallons (flag < 6.0 as "MPG needs improvement")
 // Friday close-out: close/reopen a week's settlement (snapshot stored in
-// settlements table). Week summary: confirmed revenue, driver pay, fuel,
+// settlements table). Week summary: delivered revenue, driver pay, fuel,
 // company net, receipts, pending entries awaiting review.
 const express = require('express');
 const { query } = require('../db');
@@ -40,14 +43,14 @@ async function computeWeek(weekStartISO, driverFilter) {
       `SELECT COALESCE(SUM(${LOAD_MONEY_SQL}),0) AS revenue,
               COALESCE(SUM(miles),0) AS miles,
               COUNT(DISTINCT load_date) AS days_worked
-       FROM loads WHERE driver_id = $1 AND status = 'confirmed'
+       FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
          AND load_date >= $2 AND load_date <= $3`,
       [d.id, wsISO, weISO]
     );
-    // Statement detail: this driver's confirmed loads for the week,
+    // Statement detail: this driver's delivered loads for the week,
     // one row per load (Rate / Prepull / Reefer / Detention / OW / FSC).
     const loadRows = await query(
-      `SELECT * FROM loads WHERE driver_id = $1 AND status = 'confirmed'
+      `SELECT * FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
          AND load_date >= $2 AND load_date <= $3
        ORDER BY load_date, id`,
       [d.id, wsISO, weISO]
@@ -123,7 +126,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     );
     const prevLoads = await query(
       `SELECT COALESCE(SUM(miles),0) AS miles FROM loads WHERE driver_id = $1
-         AND status = 'confirmed' AND load_date >= $2 AND load_date < $3`,
+         AND progress IN ('delivered', 'returned') AND load_date >= $2 AND load_date < $3`,
       [d.id, prevWsISO, wsISO]
     );
     const twoGal = gallons + parseFloat(prevFuel.rows[0].gallons);
@@ -134,7 +137,7 @@ async function computeWeek(weekStartISO, driverFilter) {
       [wsISO, d.id]
     );
     // Weekend (Sat/Sun) 70% rule: per-day nets, auto condition from work
-    // records (confirmed load on every Mon-Fri of this week and next).
+    // records (delivered load on every Mon-Fri of this week and next).
     const fuelByDay = await query(
       `SELECT fuel_date::text AS d, COALESCE(SUM(cost),0) AS c FROM fuel
        WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3 GROUP BY fuel_date`,
@@ -156,7 +159,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     const nextWeISO = toISODate(addDays(ws, 13));
     const nextLoads = await query(
       `SELECT DISTINCT load_date::text AS d FROM loads WHERE driver_id = $1
-         AND status = 'confirmed' AND load_date >= $2 AND load_date <= $3`,
+         AND progress IN ('delivered', 'returned') AND load_date >= $2 AND load_date <= $3`,
       [d.id, nextWsISO, nextWeISO]
     );
     const weekend = computeWeekend({
@@ -194,7 +197,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     [wsISO, weISO]
   );
   const pending = await query(
-    `SELECT COUNT(*) AS n FROM loads WHERE status = 'pending' AND load_date >= $1 AND load_date <= $2
+    `SELECT COUNT(*) AS n FROM loads WHERE progress NOT IN ('delivered', 'returned') AND load_date >= $1 AND load_date <= $2
      ${driverFilter ? 'AND driver_id = $3' : ''}`,
     driverFilter ? [wsISO, weISO, driverFilter] : [wsISO, weISO]
   );
@@ -357,8 +360,8 @@ router.get('/statement', requireLogin, async (req, res) => {
   const data = await computeWeek(wsISO, driverId);
   if (!data.rows.length) return res.redirect('/settlement');
   // Statement extras (driver-statement audit, 2026-11-28): the same
-  // week's PENDING loads for this driver (registered but not yet
-  // confirmed — the printout lists them as "not counted yet" so the
+  // week's not-yet-delivered loads for this driver (registered but
+  // not delivered — the printout lists them as "not counted yet" so the
   // driver can see nothing is missing) and the week's fuel purchases
   // itemized (the exact rows summed into the Fuel line, so the
   // driver can verify the deduction). Display only — computeWeek
@@ -368,7 +371,7 @@ router.get('/statement', requireLogin, async (req, res) => {
   let pendingLoads = [], fuelEntries = [];
   try {
     pendingLoads = (await query(
-      `SELECT * FROM loads WHERE driver_id = $1 AND status = 'pending'
+      `SELECT * FROM loads WHERE driver_id = $1 AND progress NOT IN ('delivered', 'returned')
          AND load_date >= $2 AND load_date <= $3 ORDER BY load_date, id`,
       [driverId, data.weekStartISO, data.weekEndISO]
     )).rows;
