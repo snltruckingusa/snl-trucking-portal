@@ -84,9 +84,19 @@ async function ensureWeek(weekISO) {
   return r.rows[0];
 }
 
-// Auto-create claim lines for confirmed loads delivered this week that
-// do not have a line yet. Detention is claimed only when approved
-// (same money rule as settlement).
+// Auto-create claim lines for loads delivered this week that do not
+// have a line yet. Eligibility is DELIVERY, not confirmation (Eric,
+// 2026-11-28): the claim method is the one Eric built in Excel to
+// solve the recurring return-balance problem — leg 1 (pickup ->
+// delivery) is claimed in the delivery week, and only leg 2 waits
+// for the empty return (the leg split in lineLegs/buildClaimList
+// enforces that side; PierLink's own statements pay the same way).
+// Confirmation still gates DRIVER PAY — settlement's computeWeek
+// reads status='confirmed' itself — but it no longer gates the
+// claim: a delivered-but-unreturned load must be visible to the
+// claim list and A/R from its delivery week, not appear a week late.
+// Detention is claimed only when approved (same money rule as
+// settlement).
 async function ensureLines(weekISO, weekEndISO) {
   await query(
     `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, return_fee, prepull, reefer, detention, overweight, fsc)
@@ -94,7 +104,8 @@ async function ensureLines(weekISO, weekEndISO) {
             CASE WHEN l.detention_status IN ('pending','rejected') THEN 0 ELSE l.detention END,
             l.overweight, l.fsc
      FROM loads l
-     WHERE l.status = 'confirmed' AND l.load_date >= $1 AND l.load_date <= $2
+     WHERE (l.status = 'confirmed' OR l.progress IN ('delivered','returned'))
+       AND l.load_date >= $1 AND l.load_date <= $2
        AND NOT EXISTS (SELECT 1 FROM invoice_lines il WHERE il.load_id = l.id)`,
     [weekISO, weekEndISO]
   );
@@ -155,10 +166,12 @@ async function buildInvoice(weekISO) {
     blocks.push({ driver: d, prevLines, weekLines, prevUnpaid, paidWeek, carryOut });
   }
 
-  // Help Ins: $15 x loads delivered (confirmed) this week, within the
-  // subsidy window. Owner override wins when set.
+  // Help Ins: $15 x loads delivered this week, within the subsidy
+  // window. Eligibility matches the claim lines (delivery, not
+  // confirmation — Eric, 2026-11-28; PierLink books the delivery
+  // leg's $7.50 at delivery). Owner override wins when set.
   const delivered = await query(
-    "SELECT COUNT(*) AS n FROM loads WHERE status = 'confirmed' AND load_date >= $1 AND load_date <= $2",
+    "SELECT COUNT(*) AS n FROM loads WHERE (status = 'confirmed' OR progress IN ('delivered','returned')) AND load_date >= $1 AND load_date <= $2",
     [weekISO, weISO]
   );
   const deliveredCount = parseInt(delivered.rows[0].n, 10);
