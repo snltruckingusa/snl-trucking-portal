@@ -27,6 +27,9 @@
     .claim-list th, .claim-list td { padding: 3px 5px; border-bottom: 1px solid #ccc; }
     .claim-list h2 { font-size: 14px; margin: 0 0 4px; }
     .print-overview { display: block; }
+    .print-overview .lh { border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 8px; }
+    .print-overview .lh-co { font-size: 20px; font-weight: 700; }
+    .print-overview .lh-meta { font-size: 10.5px; color: #333; margin-top: 2px; }
     .print-overview h1 { font-size: 17px; margin: 0 0 2px; }
     .print-overview .week-line { font-size: 11px; margin-bottom: 10px; }
     .ov-boxes { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -62,8 +65,12 @@
 </div>
 
 <div class="print-overview">
+  <div class="lh">
+    <div class="lh-co">S&amp;L Trucking LLC</div>
+    <div class="lh-meta">197 Berwick Lakes Blvd, Pooler, GA 31322 · Tel (213) 503-5668 · acteo22@gmail.com · USDOT 4227507 · MC-1639360</div>
+  </div>
   <h1>PierLink — Weekly Claim List · Overview</h1>
-  <p class="week-line"><b><%= weekLabel %></b> (<%= weekISO %> ~ <%= weekEndISO %>) · S&amp;L Trucking LLC</p>
+  <p class="week-line">To: PierLink System, Inc. · <b><%= weekLabel %></b> (<%= weekISO %> ~ <%= weekEndISO %>)</p>
   <div class="ov-boxes">
     <% blocks.forEach(function (b) { %>
     <div class="ov-box">
