@@ -72,8 +72,8 @@
 <div class="claim-list">
 <h1 class="screen-only">PierLink — Weekly Claim List</h1>
 <div class="no-print" style="display:flex;gap:8px;margin:12px 0">
-  <a class="btn" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
   <a class="btn secondary" href="/invoice?week=<%= weekISO %>&view=drivers">Driver Invoices — Statements</a>
+  <a class="btn" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
 </div>
 <p class="notice screen-only">Leg by leg, the way PierLink's own statements are built: <b>Leg 1</b> pickup → delivery is claimed in the delivery week, <b>Leg 2</b> delivery → empty return in the return week. A container whose empty is still out shows a <b>$0 leg-2 line</b> — not claimed yet, but never forgotten; its amount waits in "Payment for Next week (Mty Not Return)". The <b>Insurance</b> column is PierLink's Help Ins booking ($7.50 per leg) — shown for line-by-line comparison; our claim Total excludes it, as always.</p>
 
