@@ -99,6 +99,23 @@
 </table>
 <% } %>
 
+<% if (typeof pendingLoads !== 'undefined' && pendingLoads.length) { %>
+<h2>Loads not yet counted (pending confirmation)</h2>
+<table>
+  <tr><th>Date</th><th>Container</th><th>Delivery</th><th class="num">Total</th><th>Status</th></tr>
+  <% pendingLoads.forEach(function(l){ %>
+  <tr>
+    <td><%= fmtDate(l.load_date) %></td>
+    <td><%= l.container_no || '' %></td>
+    <td><%= l.delivery || '' %></td>
+    <td class="num"><%= money(loadTotal(l)) %></td>
+    <td>Not counted yet</td>
+  </tr>
+  <% }) %>
+</table>
+<p class="note">These loads are registered for this week but are not confirmed yet, so they are not in the totals below. A load is counted in the week it is confirmed.</p>
+<% } %>
+
 <table class="summary">
   <tr><td>Revenue</td><td class="num"><%= money(r.revenue) %></td></tr>
   <% if (r.prepullCredit > 0) { %><tr><td>&nbsp;&nbsp;of which prepull work (approved)</td><td class="num"><%= money(r.prepullCredit) %></td></tr><% } %>
@@ -111,6 +128,21 @@
   <tr class="total"><td>Driver pay</td><td class="num"><%= money(r.driverPay) %></td></tr>
 </table>
 
+<% if (typeof fuelEntries !== 'undefined' && fuelEntries.length) { %>
+<h2>Fuel purchases counted this week</h2>
+<table>
+  <tr><th>Date</th><th class="num">Gallons</th><th class="num">TCS $/gal</th><th class="num">Amount</th></tr>
+  <% fuelEntries.forEach(function(f){ %>
+  <tr>
+    <td><%= fmtDate(f.fuel_date) %></td>
+    <td class="num"><%= f.gallons %></td>
+    <td class="num">$<%= Number(f.tcs_price).toFixed(4) %></td>
+    <td class="num"><%= money(f.cost) %></td>
+  </tr>
+  <% }) %>
+  <tr><td><b>Total</b></td><td class="num"><b><%= r.gallons %></b></td><td></td><td class="num"><b><%= money(r.fuelCost) %></b></td></tr>
+</table>
+<% } %>
 <% if (r.fuelStd) { %>
 <p class="note">Fuel standard for your lanes: <%= r.fuelStd.stdGallons %> gal. You used <%= r.fuelStd.excessGal >= 0 ? r.fuelStd.excessGal + ' gal over' : Math.abs(r.fuelStd.excessGal) + ' gal under' %> the standard<% if (r.fuelStd.excessGal >= 0) { %> (<%= money(r.fuelStd.excessCost) %>; your share <%= money(r.fuelStd.driverShare) %>)<% } else { %> (saved <%= money(-r.fuelStd.excessCost) %>)<% } %>. Miles: <%= r.miles %> · MPG: <%= r.mpg === null ? '—' : r.mpg %><% if (r.mpg2w !== null && r.mpg2w !== undefined) { %> · 2-week avg MPG: <%= r.mpg2w %><% } %>.</p>
 <% } %>
