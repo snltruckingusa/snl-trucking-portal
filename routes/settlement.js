@@ -304,12 +304,37 @@ router.get('/statement', requireLogin, async (req, res) => {
   }
   const data = await computeWeek(wsISO, driverId);
   if (!data.rows.length) return res.redirect('/settlement');
+  // Statement extras (driver-statement audit, 2026-11-28): the same
+  // week's PENDING loads for this driver (registered but not yet
+  // confirmed — the printout lists them as "not counted yet" so the
+  // driver can see nothing is missing) and the week's fuel purchases
+  // itemized (the exact rows summed into the Fuel line, so the
+  // driver can verify the deduction). Display only — computeWeek
+  // math is untouched. A failure here must never break the
+  // statement itself, so both queries degrade to empty lists (the
+  // downtime_pay try/catch precedent in computeWeek above).
+  let pendingLoads = [], fuelEntries = [];
+  try {
+    pendingLoads = (await query(
+      `SELECT * FROM loads WHERE driver_id = $1 AND status = 'pending'
+         AND load_date >= $2 AND load_date <= $3 ORDER BY load_date, id`,
+      [driverId, data.weekStartISO, data.weekEndISO]
+    )).rows;
+    fuelEntries = (await query(
+      `SELECT * FROM fuel WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3
+       ORDER BY fuel_date, id`,
+      [driverId, data.weekStartISO, data.weekEndISO]
+    )).rows;
+  } catch (e) {
+    console.error('statement extras failed (statement renders without them):', e.message);
+  }
   // Pay day (Eric's statement format): the Friday of the following
   // week — settlements are paid 1 week in arrears.
   const payDayISO = toISODate(addDays(new Date(data.weekEndISO + 'T00:00:00'), 6));
   res.render('statement-print', {
     r: data.rows[0], weekStartISO: data.weekStartISO, weekEndISO: data.weekEndISO,
     generatedOn: toISODate(new Date()), payDayISO,
+    pendingLoads, fuelEntries,
   });
 });
 
