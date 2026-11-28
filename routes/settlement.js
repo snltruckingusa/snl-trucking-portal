@@ -1,10 +1,12 @@
-// Weekly settlement (Mon-Sun) + MPG.
+// Weekly settlement (Sun-Sat) + MPG.
 // Per driver, per week:
-//   revenue  = sum(rate + prepull + reefer + detention + overweight + FSC)
-//              over DELIVERED loads (driver clock = delivery — Eric,
-//              2026-11-28: pay follows delivery, NOT ticket confirmation;
-//              confirmation is a document control for the PierLink
-//              claim clock only)
+//   revenue  = sum over the week's counted entries. A load counts on
+//              the driver clock = delivery (Eric, 2026-11-28: pay
+//              follows delivery, NOT ticket confirmation; confirmation
+//              is a document control for the PierLink claim clock
+//              only). From PAY_LEG_START the entry is split into two
+//              legs like the PierLink claim: leg 1 in the delivery
+//              week, leg 2 in the empty-return week.
 //   fuel     = sum(cost) over fuel purchases in the week
 //   insurance = $100 x days worked (distinct dates with a delivered load)
 //   net      = revenue - fuel - insurance
@@ -26,6 +28,54 @@ const { matchLane } = require('../lib/rates');
 
 const router = express.Router();
 
+// Pay legs (Eric, 2026-11-28): from the week of Sunday 2026-11-29,
+// driver pay splits into two legs, exactly like the PierLink claim —
+// leg 1 counts in the delivery week, leg 2 in the empty-return
+// week, so returning the empty is what releases the second half.
+// Loads delivered before the start date keep the old rule (counted
+// in full in their delivery week), so a load already settled whole
+// is never paid twice when its return lands after the switch.
+const PAY_LEG_START = '2026-11-29';
+
+const r2 = (n) => Math.round(n * 100) / 100;
+const halfOf = (v) => r2(num(v) / 2);
+// Same allocation as the claim legs (claimHelpers.lineLegs):
+// Rate / Reefer / Overweight / FSC split in half (leg 2 takes the
+// remainder, cent-exact); Return fee and Prepull ride leg 2;
+// Detention rides leg 1. The yard fee is not part of the claim; it
+// rides leg 1 so leg 1 + leg 2 always equals the whole load.
+function splitLoadLegs(l) {
+  const leg1 = {
+    rate: halfOf(l.rate), return_fee: 0, prepull: 0,
+    reefer: halfOf(l.reefer), detention: num(l.detention),
+    overweight: halfOf(l.overweight), fsc: halfOf(l.fsc),
+    yard_fee: num(l.yard_fee),
+  };
+  const leg2 = {
+    rate: r2(num(l.rate) - leg1.rate), return_fee: num(l.return_fee),
+    prepull: num(l.prepull), reefer: r2(num(l.reefer) - leg1.reefer),
+    detention: 0, overweight: r2(num(l.overweight) - leg1.overweight),
+    fsc: r2(num(l.fsc) - leg1.fsc), yard_fee: 0,
+  };
+  return { leg1, leg2 };
+}
+// Compact city label from a delivery address — the same display
+// rule as the PierLink claim list.
+function shortCity(desc) {
+  const s = String(desc || '');
+  const remarkAt = s.indexOf(' O/W:');
+  const main = remarkAt >= 0 ? s.slice(0, remarkAt) : s;
+  const remark = remarkAt >= 0 ? s.slice(remarkAt) : '';
+  const m = main.match(/,\s*([A-Za-z][A-Za-z .'-]*?)\s*,\s*[A-Z]{2}\s+\d{5}/);
+  if (m) return m[1].trim() + remark;
+  const m2 = main.match(/,\s*([A-Za-z][A-Za-z .'-]*?)\s*,\s*[A-Z]{2}\s*$/);
+  if (m2) return m2[1].trim() + remark;
+  return s;
+}
+function loadDisp(l) {
+  return (l.container_no ? l.container_no + ' · ' : '') + shortCity(l.delivery);
+}
+
 async function computeWeek(weekStartISO, driverFilter) {
   const ws = new Date(weekStartISO + 'T00:00:00');
   const we = weekEnd(ws);
@@ -39,28 +89,51 @@ async function computeWeek(weekStartISO, driverFilter) {
 
   const rows = [];
   for (const d of drivers) {
-    const loads = await query(
-      `SELECT COALESCE(SUM(${LOAD_MONEY_SQL}),0) AS revenue,
-              COALESCE(SUM(miles),0) AS miles,
-              COUNT(DISTINCT COALESCE(delivered_on, load_date)) AS days_worked
-       FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
-         AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3`,
-      [d.id, wsISO, weISO]
-    );
-    // Statement detail: this driver's delivered loads for the week,
-    // one row per load (Rate / Prepull / Reefer / Detention / OW / FSC).
-    const loadRows = await query(
+    // Counted entries for the week (statement detail + revenue).
+    // A load delivered before PAY_LEG_START contributes one full
+    // entry in its delivery week. A load delivered on/after it
+    // contributes a leg-1 entry in its delivery week and a leg-2
+    // entry in its return week. Miles ride the delivery week; a
+    // date with any entry counts as a day worked (insurance).
+    const candRows = (await query(
       `SELECT * FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
-         AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3
+         AND ((COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3)
+           OR (returned_on >= $2 AND returned_on <= $3))
        ORDER BY COALESCE(delivered_on, load_date), id`,
       [d.id, wsISO, weISO]
-    );
+    )).rows;
+    const entries = [];
+    const workedDates = new Set();
+    let miles = 0;
+    for (const l of candRows) {
+      const delISO = toISODate(new Date(l.delivered_on || l.load_date));
+      const retISO = l.returned_on ? toISODate(new Date(l.returned_on)) : null;
+      const inWeek = (x) => x && x >= wsISO && x <= weISO;
+      const base = { ...l, disp: loadDisp(l) };
+      if (delISO < PAY_LEG_START) {
+        if (inWeek(delISO)) {
+          entries.push({ ...base, leg: 0, entry_date: delISO, load_date: delISO });
+          miles += num(l.miles); workedDates.add(delISO);
+        }
+      } else {
+        const legs = splitLoadLegs(l);
+        if (inWeek(delISO)) {
+          entries.push({ ...base, ...legs.leg1, leg: 1, entry_date: delISO, load_date: delISO });
+          miles += num(l.miles); workedDates.add(delISO);
+        }
+        if (retISO && inWeek(retISO)) {
+          entries.push({ ...base, ...legs.leg2, leg: 2, entry_date: retISO, load_date: retISO });
+          workedDates.add(retISO);
+        }
+      }
+    }
+    const loadRows = { rows: entries };
     const fuel = await query(
       `SELECT COALESCE(SUM(cost),0) AS fuel_cost, COALESCE(SUM(gallons),0) AS gallons
        FROM fuel WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3`,
       [d.id, wsISO, weISO]
     );
-    let revenue = parseFloat(loads.rows[0].revenue);
+    let revenue = Math.round(entries.reduce((s, e) => s + loadTotal(e), 0) * 100) / 100;
     // Approved prepull work (Eric, 2026-11-14): doing another driver's
     // leg pays +$60 (empty return) / +$75 (load out) into THIS driver's
     // week income — everything splits from total income. The matching
@@ -86,8 +159,7 @@ async function computeWeek(weekStartISO, driverFilter) {
       console.error('downtime_pay query failed (treated as 0):', e.message);
     }
     const downtimeTotal = Math.round(downtimeRows.reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
-    const miles = parseFloat(loads.rows[0].miles);
-    const daysWorked = parseInt(loads.rows[0].days_worked, 10);
+    const daysWorked = workedDates.size;
     const fuelCost = parseFloat(fuel.rows[0].fuel_cost);
     const gallons = parseFloat(fuel.rows[0].gallons);
     const insurance = daysWorked * INSURANCE_PER_DAY;
@@ -102,11 +174,12 @@ async function computeWeek(weekStartISO, driverFilter) {
     // per lane vs actual gallons bought, priced at the week's average
     // $/gal. Shown on the statement so the driver sees his own numbers.
     let stdGallons = 0, stdMatched = 0;
-    for (const l of loadRows.rows) {
+    const stdRows = entries.filter(e => e.leg !== 2);
+    for (const l of stdRows) {
       const lane = matchLane(l.delivery);
       if (lane && lane.gallons) { stdGallons += lane.gallons; stdMatched += 1; }
     }
-    const stdComplete = loadRows.rows.length > 0 && stdMatched === loadRows.rows.length;
+    const stdComplete = stdRows.length > 0 && stdMatched === stdRows.length;
     let fuelStd = null;
     if (stdComplete && stdGallons > 0 && gallons > 0) {
       const excessGal = Math.round((gallons - stdGallons) * 100) / 100;
@@ -147,7 +220,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     fuelByDay.rows.forEach(r => { fuelMap[r.d] = parseFloat(r.c); });
     const revMap = {};
     loadRows.rows.forEach(l => {
-      const k = toISODate(new Date(l.delivered_on || l.load_date));
+      const k = l.entry_date || toISODate(new Date(l.delivered_on || l.load_date));
       revMap[k] = (revMap[k] || 0) + loadTotal(l);
     });
     const weekDates = [];
@@ -158,8 +231,13 @@ async function computeWeek(weekStartISO, driverFilter) {
     const nextWsISO = toISODate(addDays(ws, 7));
     const nextWeISO = toISODate(addDays(ws, 13));
     const nextLoads = await query(
-      `SELECT DISTINCT COALESCE(delivered_on, load_date)::text AS d FROM loads WHERE driver_id = $1
-         AND progress IN ('delivered', 'returned') AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3`,
+      `SELECT DISTINCT d FROM (
+         SELECT COALESCE(delivered_on, load_date)::text AS d FROM loads WHERE driver_id = $1
+           AND progress IN ('delivered', 'returned') AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3
+         UNION
+         SELECT returned_on::text AS d FROM loads WHERE driver_id = $1
+           AND returned_on >= $2 AND returned_on <= $3
+       ) s`,
       [d.id, nextWsISO, nextWeISO]
     );
     const weekend = computeWeekend({
@@ -383,13 +461,41 @@ router.get('/statement', requireLogin, async (req, res) => {
   } catch (e) {
     console.error('statement extras failed (statement renders without them):', e.message);
   }
+  // Return legs not yet counted (pay-leg era): loads delivered up
+  // to this week's end whose leg 2 has not landed by the week's
+  // end — the statement lists the amount so the driver sees what
+  // the return will release. Display only, degrades to empty.
+  let leg2Pending = [];
+  try {
+    const lpRows = (await query(
+      `SELECT * FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
+         AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3
+         AND (returned_on IS NULL OR returned_on > $3)
+       ORDER BY COALESCE(delivered_on, load_date), id`,
+      [driverId, PAY_LEG_START, data.weekEndISO]
+    )).rows;
+    leg2Pending = lpRows.map(l => {
+      const legs = splitLoadLegs(l);
+      return {
+        container_no: l.container_no, delivery: l.delivery, disp: loadDisp(l),
+        deliveredISO: toISODate(new Date(l.delivered_on || l.load_date)),
+        amount: loadTotal({ ...l, ...legs.leg2 }),
+      };
+    });
+  } catch (e) {
+    console.error('statement leg-2 pending failed (statement renders without it):', e.message);
+  }
+  // The transition notice prints only on the last pre-leg week's
+  // statements (the week right before PAY_LEG_START).
+  const showLegNotice = data.weekStartISO < PAY_LEG_START
+    && toISODate(addDays(new Date(data.weekStartISO + 'T00:00:00'), 7)) === PAY_LEG_START;
   // Pay day (Eric's statement format): the Friday of the following
   // week — settlements are paid 1 week in arrears.
   const payDayISO = toISODate(addDays(new Date(data.weekEndISO + 'T00:00:00'), 6));
   res.render('statement-print', {
     r: data.rows[0], weekStartISO: data.weekStartISO, weekEndISO: data.weekEndISO,
     generatedOn: toISODate(new Date()), payDayISO,
-    pendingLoads, fuelEntries,
+    pendingLoads, fuelEntries, leg2Pending, payLegStart: PAY_LEG_START, showLegNotice,
   });
 });
 
@@ -469,3 +575,5 @@ module.exports = router;
 // The CPA overview reuses the exact settlement math (no second copy
 // of the money rules to drift out of sync).
 module.exports.computeWeek = computeWeek;
+module.exports.PAY_LEG_START = PAY_LEG_START;
+module.exports.splitLoadLegs = splitLoadLegs;
