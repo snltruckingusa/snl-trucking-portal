@@ -153,13 +153,24 @@ async function buildInvoice(weekISO) {
         returned: l.progress === 'returned' || !!l.returned_on,
       };
       paidWeek += paidThis;
+      // Week separation (Eric, 2026-11-28): weeks before the claim
+      // baseline are sealed with his Excel — their portal lines were
+      // never paid inside the portal, so their balances must not
+      // flood later weeks as "previous unpaid" (the invoice home
+      // showed $46,305 of sealed history for the baseline week).
+      // From the baseline week onward, only baseline-and-later lines
+      // can carry in or carry out.
+      const sealedLine = weekISO >= CLAIM_BASELINE_WEEK
+        && fmtDate(l.claim_week) < CLAIM_BASELINE_WEEK;
       if (fmtDate(l.claim_week) < weekISO) {
-        if (row.balanceAtStart > 0.004 || paidThis > 0) prevLines.push(row);
-        prevUnpaid += Math.max(0, row.balanceAtStart);
+        if (!sealedLine) {
+          if (row.balanceAtStart > 0.004 || paidThis > 0) prevLines.push(row);
+          prevUnpaid += Math.max(0, row.balanceAtStart);
+        }
       } else if (fmtDate(l.claim_week) === weekISO) {
         weekLines.push(row);
       }
-      if (balanceNow > 0.004) carryOut += balanceNow;
+      if (!sealedLine && balanceNow > 0.004) carryOut += balanceNow;
     }
     totalPaidWeek += paidWeek;
     if (!prevLines.length && !weekLines.length) continue;
@@ -244,6 +255,83 @@ const HELP_INS_TRUCKS = ['100', '101', '200', '201'];
 // MRSU6826315 return leg $750 + one Brinceson return leg $787.50)
 // re-enters once, as manual lines in the baseline week itself.
 const CLAIM_BASELINE_WEEK = '2026-11-22';
+
+// Sealed weeks' claimed figures, exactly as submitted (S.Total =
+// Total + Help Ins - Deduct). Mirror of SEALED_WEEK_CLAIMS in
+// routes/ar.js — keep the two in sync.
+const SEALED_WEEK_CLAIMS = { '2026-11-08': 27505, '2026-11-15': 18630 };
+
+// Unpaid by week (Eric, 2026-11-28): instead of one lump "Unpaid"
+// figure, split the open balance week by week so each week can be
+// resolved and checked off, checklist-style. Figures follow A/R's
+// cash truth: Received is the actual deposit; allocations live in
+// adjustment entries. A live week's balance basis is its expected
+// deposit (claim + Help Ins - deduct); a sealed week's basis is
+// its submitted S.Total. The pre-baseline chain (October) rides as
+// its own row via the "PierLink — Prior Adjustments" customer.
+// Returns { rows, carriedIn } — carriedIn sums every balance from
+// before the viewed week. Any failure degrades to null and the
+// home falls back to the line-based figure.
+async function unpaidByWeek(viewWeekISO) {
+  try {
+    const cust = await query('SELECT id FROM ar_customers WHERE invoice_linked = true ORDER BY id LIMIT 1');
+    if (!cust.rows.length) return null;
+    const custId = cust.rows[0].id;
+    const entries = (await query(
+      'SELECT week_of, kind, amount FROM ar_entries WHERE customer_id = $1', [custId]
+    )).rows;
+    const sumKind = (wk, kind) => entries
+      .filter(e => fmtDate(e.week_of) === wk && e.kind === kind)
+      .reduce((a, e) => a + num(e.amount), 0);
+
+    const weekSet = new Set(Object.keys(SEALED_WEEK_CLAIMS));
+    (await query(
+      'SELECT DISTINCT claim_week FROM invoice_lines WHERE claim_week >= $1', [CLAIM_BASELINE_WEEK]
+    )).rows.forEach(r => weekSet.add(fmtDate(r.claim_week)));
+    entries.forEach(e => { const w = fmtDate(e.week_of); if (w >= CLAIM_BASELINE_WEEK) weekSet.add(w); });
+
+    const rows = [];
+    for (const wk of [...weekSet].sort()) {
+      let claimed, basis;
+      if (SEALED_WEEK_CLAIMS[wk] !== undefined) {
+        claimed = basis = SEALED_WEEK_CLAIMS[wk];
+      } else {
+        const cl = await buildClaimList(wk, false);
+        claimed = cl.totalClaim;
+        basis = cl.expectedDeposit;
+      }
+      const received = sumKind(wk, 'received');
+      const adj = sumKind(wk, 'adjustment');
+      const balance = r2(basis - received - adj);
+      rows.push({
+        weekISO: wk, weekEndISO: toISODate(addDays(new Date(wk + 'T00:00:00'), 6)),
+        claimed: r2(claimed), received: r2(received), balance,
+        current: wk === viewWeekISO, resolved: Math.abs(balance) < 0.005,
+      });
+    }
+    // The October chain: the Prior Adjustments customer, one row.
+    const pa = await query("SELECT id FROM ar_customers WHERE name LIKE '%Prior Adjustments%' ORDER BY id LIMIT 1");
+    if (pa.rows.length) {
+      const paId = pa.rows[0].id;
+      const paClaim = (await query('SELECT COALESCE(SUM(amount),0) AS s FROM ar_claims WHERE customer_id = $1', [paId])).rows[0].s;
+      const paRecv = (await query("SELECT COALESCE(SUM(amount),0) AS s FROM ar_entries WHERE customer_id = $1 AND kind = 'received'", [paId])).rows[0].s;
+      const balance = r2(num(paClaim) - num(paRecv));
+      rows.push({
+        weekISO: null, weekEndISO: null, label: 'October adjustment',
+        claimed: r2(num(paClaim)), received: r2(num(paRecv)), balance,
+        current: false, resolved: Math.abs(balance) < 0.005,
+      });
+    }
+    rows.sort((a, b) => (a.weekISO || '0') < (b.weekISO || '0') ? 1 : -1);
+    const carriedIn = r2(rows
+      .filter(r => r.weekISO === null || r.weekISO < viewWeekISO)
+      .reduce((a, r) => a + r.balance, 0));
+    return { rows, carriedIn };
+  } catch (e) {
+    console.error('unpaidByWeek failed (home falls back):', e.message);
+    return null;
+  }
+}
 
 function sundayOf(iso) {
   if (!iso) return null;
@@ -537,21 +625,32 @@ router.get('/', async (req, res) => {
     const [prevMoney, curMoney, nextMoney] = await Promise.all([
       weekMoney(prevWeek), weekMoney(wsISO), weekMoney(nextWeek),
     ]);
+    // The home's claim figures follow the claim list (leg basis —
+    // Eric, 2026-11-28): a delivered-but-unreturned load contributes
+    // only its leg 1 this week, so the home Total matches the send
+    // sheet exactly instead of counting whole round trips.
+    const claimData = await buildClaimList(wsISO, false);
+    const claimByDriver = {};
+    claimData.blocks.forEach(b => { claimByDriver[b.driver.id] = b.claim; });
     const driverList = data.blocks.map(b => ({
       driver: b.driver,
-      weekClaim: r2(b.weekLines.reduce((a, l) => a + num(l.claim), 0)),
+      weekClaim: claimByDriver[b.driver.id] !== undefined
+        ? r2(claimByDriver[b.driver.id])
+        : r2(b.weekLines.reduce((a, l) => a + num(l.claim), 0)),
       prevUnpaid: r2(b.prevUnpaid),
       paidWeek: r2(b.paidWeek),
       carryOut: r2(b.carryOut),
     }));
+    const unpaidWeeks = await unpaidByWeek(wsISO);
     const cards = {
-      totalClaim: r2(driverList.reduce((a, d) => a + d.weekClaim, 0)),
-      unpaidTotal: r2(driverList.reduce((a, d) => a + d.prevUnpaid, 0)),
+      totalClaim: r2(claimData.totalClaim),
+      unpaidTotal: unpaidWeeks ? unpaidWeeks.carriedIn
+        : r2(driverList.reduce((a, d) => a + d.prevUnpaid, 0)),
       driverPay: curMoney ? curMoney.driverPay : null,
       companyProfit: curMoney ? curMoney.company : null,
     };
     return res.render('invoice', {
-      ...base, view: 'home', cards, driverList,
+      ...base, view: 'home', cards, driverList, unpaidWeeks,
       donuts: { prev: donutFor(prevMoney), cur: donutFor(curMoney), next: donutFor(nextMoney) },
     });
   } catch (e) {
