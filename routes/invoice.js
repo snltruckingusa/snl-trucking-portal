@@ -100,21 +100,17 @@ async function ensureWeek(weekISO) {
 // settlement).
 // The line's home week is the load's DELIVERY week (Eric, 2026-11-28:
 // both clocks cut by delivery — a load picked this week and
-// delivered next week belongs to next week). Any eligible load up
-// to the viewed week's end gets its line in its own delivery week,
-// whichever week is being viewed, so nothing waits on the right
-// page being opened first.
+// delivered next week belongs to next week), so the creation window
+// keys on the delivery date, not the pickup date.
 async function ensureLines(weekISO, weekEndISO) {
   await query(
     `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, return_fee, prepull, reefer, detention, overweight, fsc)
-     SELECT l.id, l.driver_id,
-            (COALESCE(l.delivered_on, l.load_date) - EXTRACT(DOW FROM COALESCE(l.delivered_on, l.load_date))::int)::date,
-            l.delivery, l.rate, l.return_fee, l.prepull, l.reefer,
+     SELECT l.id, l.driver_id, $1, l.delivery, l.rate, l.return_fee, l.prepull, l.reefer,
             CASE WHEN l.detention_status IN ('pending','rejected') THEN 0 ELSE l.detention END,
             l.overweight, l.fsc
      FROM loads l
      WHERE (l.status = 'confirmed' OR l.progress IN ('delivered','returned'))
-       AND COALESCE(l.delivered_on, l.load_date) <= $2
+       AND COALESCE(l.delivered_on, l.load_date) >= $1 AND COALESCE(l.delivered_on, l.load_date) <= $2
        AND NOT EXISTS (SELECT 1 FROM invoice_lines il WHERE il.load_id = l.id)`,
     [weekISO, weekEndISO]
   );
