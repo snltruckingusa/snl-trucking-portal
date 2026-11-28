@@ -91,21 +91,30 @@ async function ensureWeek(weekISO) {
 // delivery) is claimed in the delivery week, and only leg 2 waits
 // for the empty return (the leg split in lineLegs/buildClaimList
 // enforces that side; PierLink's own statements pay the same way).
-// Confirmation still gates DRIVER PAY — settlement's computeWeek
-// reads status='confirmed' itself — but it no longer gates the
-// claim: a delivered-but-unreturned load must be visible to the
-// claim list and A/R from its delivery week, not appear a week late.
+// Driver pay follows the same delivery clock (settlement's
+// computeWeek counts delivered loads) — confirmation gates neither
+// side; it is a document control only. A delivered-but-unreturned
+// load must be visible to the claim list and A/R from its delivery
+// week, not appear a week late.
 // Detention is claimed only when approved (same money rule as
 // settlement).
+// The line's home week is the load's DELIVERY week (Eric, 2026-11-28:
+// both clocks cut by delivery — a load picked this week and
+// delivered next week belongs to next week). Any eligible load up
+// to the viewed week's end gets its line in its own delivery week,
+// whichever week is being viewed, so nothing waits on the right
+// page being opened first.
 async function ensureLines(weekISO, weekEndISO) {
   await query(
     `INSERT INTO invoice_lines (load_id, driver_id, claim_week, description, rate, return_fee, prepull, reefer, detention, overweight, fsc)
-     SELECT l.id, l.driver_id, $1, l.delivery, l.rate, l.return_fee, l.prepull, l.reefer,
+     SELECT l.id, l.driver_id,
+            (COALESCE(l.delivered_on, l.load_date) - EXTRACT(DOW FROM COALESCE(l.delivered_on, l.load_date))::int)::date,
+            l.delivery, l.rate, l.return_fee, l.prepull, l.reefer,
             CASE WHEN l.detention_status IN ('pending','rejected') THEN 0 ELSE l.detention END,
             l.overweight, l.fsc
      FROM loads l
      WHERE (l.status = 'confirmed' OR l.progress IN ('delivered','returned'))
-       AND l.load_date >= $1 AND l.load_date <= $2
+       AND COALESCE(l.delivered_on, l.load_date) <= $2
        AND NOT EXISTS (SELECT 1 FROM invoice_lines il WHERE il.load_id = l.id)`,
     [weekISO, weekEndISO]
   );
@@ -182,7 +191,7 @@ async function buildInvoice(weekISO) {
   // confirmation — Eric, 2026-11-28; PierLink books the delivery
   // leg's $7.50 at delivery). Owner override wins when set.
   const delivered = await query(
-    "SELECT COUNT(*) AS n FROM loads WHERE (status = 'confirmed' OR progress IN ('delivered','returned')) AND load_date >= $1 AND load_date <= $2",
+    "SELECT COUNT(*) AS n FROM loads WHERE (status = 'confirmed' OR progress IN ('delivered','returned')) AND COALESCE(delivered_on, load_date) >= $1 AND COALESCE(delivered_on, load_date) <= $2",
     [weekISO, weISO]
   );
   const deliveredCount = parseInt(delivered.rows[0].n, 10);
@@ -395,6 +404,10 @@ function lineLegs(line, load) {
     }];
   }
   const loadISO = fmtDate(load.load_date);
+  // Leg 1 belongs to the DELIVERY week (Eric, 2026-11-28: both
+  // clocks cut by delivery). delivered_on is stamped at the
+  // delivered step; older loads fall back to load_date.
+  const delISO = fmtDate(load.delivered_on) || loadISO;
   const retISO = fmtDate(load.returned_on);
   const eligible = HELP_INS_TRUCKS.includes(String(load.truck_number || '').replace(/^#/, ''));
   const insFor = (wkISO) => (eligible && wkISO && wkISO <= HELP_INS_UNTIL ? HELP_INS_LEG : 0);
@@ -405,12 +418,12 @@ function lineLegs(line, load) {
     return { ...base, leg, manual: false, dateISO, weekISO: wkISO, pending, ...comps,
       insurance, claim, total: r2(claim + insurance) };
   };
-  const leg1 = mk(1, loadISO, sundayOf(loadISO), {
+  const leg1 = mk(1, delISO, sundayOf(delISO), {
     rate: half(line.rate), returnFee: 0, prepull: 0,
     reefer: half(line.reefer), detention: num(line.detention),
     overweight: half(line.overweight), fsc: half(line.fsc),
   }, false);
-  const leg2 = mk(2, retISO || loadISO, retISO ? sundayOf(retISO) : null, {
+  const leg2 = mk(2, retISO || delISO, retISO ? sundayOf(retISO) : null, {
     rate: r2(num(line.rate) - leg1.rate), returnFee: num(line.return_fee),
     prepull: num(line.prepull), reefer: r2(num(line.reefer) - leg1.reefer), detention: 0,
     overweight: r2(num(line.overweight) - leg1.overweight),
@@ -438,7 +451,7 @@ async function buildClaimList(weekISO, canWrite) {
 
   const drivers = (await query('SELECT * FROM drivers ORDER BY name')).rows;
   const lines = (await query(
-    `SELECT il.*, l.load_date, l.delivery AS load_delivery, l.progress,
+    `SELECT il.*, l.load_date, l.delivered_on, l.delivery AS load_delivery, l.progress,
             l.returned_on, l.container_no, l.truck_number
      FROM invoice_lines il LEFT JOIN loads l ON l.id = il.load_id
      ORDER BY il.driver_id, il.id`
