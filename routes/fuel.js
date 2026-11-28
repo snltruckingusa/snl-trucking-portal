@@ -19,6 +19,12 @@
 // rows without leaving the dashboard (Eric, 2026-11-26). The original
 // flat list (From/To/Driver/Truck filters + Delete) is unchanged and
 // renders whenever a from/to key is present in the query.
+//
+// Edit (Eric, 2026-11-28): rows now carry an Edit control next to
+// Delete in both tables, opening an edit form page (GET /:id/edit,
+// views/fuel-edit.ejs) — the Delete + Edit pair Eric settled on for
+// every row/file. The form posts to the pre-existing POST /:id/edit,
+// which stores an edited row by exactly the entry rules above.
 const express = require('express');
 const { query } = require('../db');
 const {
@@ -225,12 +231,43 @@ router.post('/', requireLogin, async (req, res) => {
   }
 });
 
+// Edit form page (Eric, 2026-11-28): every row gets Delete AND Edit —
+// until now the POST /:id/edit handler below existed but no page or
+// control reached it, so fixing a typo meant delete + re-enter. The
+// form (views/fuel-edit.ejs) mirrors the Add-fuel form; a scoped
+// driver may open only their own rows, exactly like edit/delete POST.
+router.get('/:id/edit', requireLogin, async (req, res) => {
+  try {
+    const scope = scopedDriverId(req);
+    const existing = await query(
+      `SELECT f.*, d.name AS driver_name, d.truck_number AS driver_truck FROM fuel f
+       JOIN drivers d ON d.id = f.driver_id WHERE f.id = $1`,
+      [req.params.id]
+    );
+    if (!existing.rows.length) return res.redirect('/fuel');
+    if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+    const drivers = (await query('SELECT * FROM drivers ORDER BY name')).rows;
+    const trucks = await truckList();
+    return res.render('fuel-edit', {
+      row: existing.rows[0], drivers, trucks,
+      isAdmin: isAdmin(req), scopedDriverId: scope,
+    });
+  } catch (e) {
+    console.error('fuel edit form failed:', e);
+    return res.status(500).send('Fuel edit failed to load. Please try again.');
+  }
+});
+
 router.post('/:id/edit', requireLogin, async (req, res) => {
   try {
     const scope = scopedDriverId(req);
     const existing = await query('SELECT * FROM fuel WHERE id = $1', [req.params.id]);
     if (!existing.rows.length) return res.redirect('/fuel');
     if (scope && existing.rows[0].driver_id !== scope) return res.status(403).send('Forbidden.');
+    // The driver can be corrected too (a misattributed entry was the
+    // Nov 26 fuel trap); a scoped user can never move a row off
+    // themselves — their driver_id is forced, like POST /.
+    const driver_id = scope || parseInt(req.body.driver_id, 10) || existing.rows[0].driver_id;
     const gallons = num(req.body.gallons);
     let tcs_price = num(req.body.tcs_price);
     let cost = Math.round(gallons * tcs_price * 100) / 100;
@@ -239,10 +276,10 @@ router.post('/:id/edit', requireLogin, async (req, res) => {
       cost = Math.round(enteredCost * 100) / 100;
       tcs_price = Math.round((cost / gallons) * 10000) / 10000;
     }
-    const truck_number = normTruck(req.body.truck_number) || normTruck(existing.rows[0].truck_number) || await defaultTruck(existing.rows[0].driver_id);
+    const truck_number = normTruck(req.body.truck_number) || normTruck(existing.rows[0].truck_number) || await defaultTruck(driver_id);
     await query(
-      'UPDATE fuel SET fuel_date=$1, gallons=$2, pump_price=$3, tcs_price=$4, cost=$5, truck_number=$6 WHERE id=$7',
-      [req.body.fuel_date, gallons, num(req.body.pump_price), tcs_price, cost, truck_number || null, req.params.id]
+      'UPDATE fuel SET fuel_date=$1, gallons=$2, pump_price=$3, tcs_price=$4, cost=$5, truck_number=$6, driver_id=$7 WHERE id=$8',
+      [req.body.fuel_date, gallons, num(req.body.pump_price), tcs_price, cost, truck_number || null, driver_id, req.params.id]
     );
     res.redirect('/fuel');
   } catch (e) {
