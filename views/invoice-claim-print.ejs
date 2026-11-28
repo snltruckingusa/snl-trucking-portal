@@ -1,0 +1,165 @@
+<%# PierLink claim list — dedicated PRINT VIEW (Eric, 2026-11-28).
+    A standalone document page (no portal chrome): on screen it
+    renders as paper sheets, exactly what will print — page 1 is
+    the S&L letterhead + overview, then one sheet per driver.
+    Eric asked for this after the browser's Ctrl+P rendering of the
+    claim-list page clipped the left edge of his test print: here
+    the layout width is fixed by the sheet, the tables use fixed
+    layout with percentage columns, and nothing can overflow. %>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PierLink Claim List — <%= weekLabel %> — S&amp;L Trucking LLC</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; background: #e9e9e9; font-size: 10.5px; }
+  .toolbar { position: sticky; top: 0; background: #222; color: #fff; padding: 10px 16px; display: flex; gap: 12px; align-items: center; z-index: 5; }
+  .toolbar b { font-size: 13px; }
+  .toolbar .sp { flex: 1; }
+  .toolbar button, .toolbar a { font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 0; cursor: pointer; text-decoration: none; }
+  .toolbar button { background: #2e7d32; color: #fff; font-weight: 700; }
+  .toolbar a { background: #555; color: #fff; }
+  .toolbar .hint { color: #bbb; font-size: 12px; }
+  .sheet { background: #fff; width: 1056px; max-width: calc(100vw - 24px); margin: 18px auto; padding: 36px 42px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  .lh { border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 10px; }
+  .lh-co { font-size: 21px; font-weight: 700; }
+  .lh-meta { font-size: 10.5px; color: #333; margin-top: 2px; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 0 0 4px; }
+  .week-line { margin: 2px 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 3px 5px; border-bottom: 1px solid #ccc; text-align: left; vertical-align: top; }
+  td.num, th.num { text-align: right; }
+  tr.pending-leg td { color: #8a6d00; background: #fff8e1; }
+  tr.totals-row td { font-weight: 700; border-top: 2px solid #999; }
+  .badge-warn { display: inline-block; background: #fff3cd; border: 1px solid #e0c36a; border-radius: 3px; padding: 0 4px; font-size: 9px; }
+  .notice { color: #555; }
+  .legs { table-layout: fixed; }
+  .legs td { word-wrap: break-word; }
+  .legs th:nth-child(1) { width: 6.5%; }
+  .legs th:nth-child(2) { width: 28%; }
+  .legs th:nth-child(3) { width: 7.5%; }
+  .legs th:nth-child(4) { width: 6.4%; }
+  .legs th:nth-child(5) { width: 6.4%; }
+  .legs th:nth-child(6) { width: 5.4%; }
+  .legs th:nth-child(7) { width: 6%; }
+  .legs th:nth-child(8) { width: 7.6%; }
+  .legs th:nth-child(9) { width: 5.4%; }
+  .legs th:nth-child(10) { width: 6%; }
+  .legs th:nth-child(11) { width: 7%; }
+  .legs th:nth-child(12) { width: 7.8%; }
+  .ov-boxes { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ov-box { flex: 1 1 180px; border: 1.5px solid #333; border-radius: 6px; padding: 8px 10px; }
+  .ov-name { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+  .ov-box td { border-bottom: none; padding: 2px 0; }
+  .ov-box tr.ov-claim td { border-top: 1px solid #999; font-weight: 700; padding-top: 4px; }
+  .ov-grand { border: 2px solid #111; border-radius: 6px; padding: 10px 14px; margin-top: 12px; }
+  .ov-grand td { border-bottom: none; padding: 2.5px 0; }
+  .ov-grand tr.ov-final td { border-top: 1.5px solid #111; font-weight: 700; font-size: 13px; padding-top: 5px; }
+  @page { size: landscape; margin: 10mm; }
+  @media print {
+    body { background: #fff; font-size: 9.5px; }
+    .toolbar { display: none !important; }
+    .sheet { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; page-break-after: always; }
+    .sheet:last-child { page-break-after: auto; }
+    th, td { padding: 2.5px 4px; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <b>Print view — PierLink Claim List</b>
+  <span class="hint">이 화면 그대로 인쇄됩니다 · Landscape / Letter로 인쇄하세요</span>
+  <span class="sp"></span>
+  <a href="/invoice/claim-list?week=<%= weekISO %>">← Claim list</a>
+  <button type="button" onclick="window.print()">Print</button>
+</div>
+
+<div class="sheet">
+  <div class="lh">
+    <div class="lh-co">S&amp;L Trucking LLC</div>
+    <div class="lh-meta">197 Berwick Lakes Blvd, Pooler, GA 31322 · Tel (213) 503-5668 · acteo22@gmail.com · USDOT 4227507 · MC-1639360</div>
+  </div>
+  <h1>PierLink — Weekly Claim List · Overview</h1>
+  <p class="week-line">To: PierLink System, Inc. · <b><%= weekLabel %></b> (<%= weekISO %> ~ <%= weekEndISO %>)</p>
+  <div class="ov-boxes">
+    <% blocks.forEach(function (b) { %>
+    <div class="ov-box">
+      <div class="ov-name"><%= b.driver.name %> <span style="font-weight:400">(#<%= b.driver.truck_number || '' %>)</span></div>
+      <table>
+        <tr><td>Previous unpaid (Mty Return)</td><td class="num"><%= money(b.prevUnpaid) %></td></tr>
+        <tr><td>Insurance (Help Ins memo)</td><td class="num"><%= money(b.insurance) %></td></tr>
+        <tr><td>Next week hold (Mty Not Return)</td><td class="num"><%= money(b.holdTotal) %></td></tr>
+        <% if (b.stillOutTotal > 0) { %><tr><td>Still out from earlier weeks</td><td class="num"><%= money(b.stillOutTotal) %></td></tr><% } %>
+        <tr class="ov-claim"><td>Claim total</td><td class="num"><%= money(b.claim) %></td></tr>
+      </table>
+    </div>
+    <% }) %>
+  </div>
+  <div class="ov-grand">
+    <table>
+      <tr><td>Total (this week's claim)</td><td class="num"><b><%= money(totalClaim) %></b></td></tr>
+      <tr><td>Help Ins (PierLink books on top; not in our claim)</td><td class="num"><%= money(totalInsurance) %></td></tr>
+      <tr><td>Deduct (advance repayment)</td><td class="num">− <%= money(deduct) %></td></tr>
+      <tr><td>S.Total</td><td class="num"><%= money(sTotal) %></td></tr>
+      <tr class="ov-final"><td>Expected deposit (Total + Help Ins − Deduct)</td><td class="num"><%= money(expectedDeposit) %></td></tr>
+      <tr><td>Received</td><td class="num"><%= money(received) %></td></tr>
+      <tr><td>Balance</td><td class="num"><b><%= money(balance) %></b></td></tr>
+    </table>
+  </div>
+  <p style="font-size:10px;margin-top:8px">Detail follows — one page per driver. Leg 1 pickup → delivery is claimed in the delivery week; Leg 2 delivery → empty return in the return week. Containers not yet returned show a $0 leg-2 line and wait in "Next week hold".</p>
+</div>
+
+<% blocks.forEach(function (b) { %>
+<div class="sheet">
+  <h2><%= b.driver.name %> <span class="notice">(#<%= b.driver.truck_number || '' %>)</span></h2>
+  <p style="margin:2px 0 6px"><b>Previous unpaid amount (Mty Return): <%= money(b.prevUnpaid) %></b> <span class="notice">— return legs of earlier deliveries, claimed on this list</span></p>
+  <table class="legs">
+    <tr><th>Date</th><th>Container / Delivery</th><th>Leg</th><th class="num">Rate</th><th class="num">Return</th><th class="num">P/P</th><th class="num">Reefer</th><th class="num">Detention</th><th class="num">O/W</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Total</th></tr>
+    <% b.rows.forEach(function (r) { %>
+    <% if (r.pending) { %>
+    <tr class="pending-leg">
+      <td><%= fmtDate(r.dateISO) %></td>
+      <td><%= r.container || '' %> · <%= r.description || '' %><br><span class="badge-warn">Empty not returned — not claimed yet</span></td>
+      <td>Leg 2<br><span class="notice">Delivery → Return</span></td>
+      <td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.00</td>
+    </tr>
+    <% } else { %>
+    <tr>
+      <td><%= fmtDate(r.dateISO) %></td>
+      <td><%= r.container || '' %><% if (r.description) { %> · <%= r.description %><% } %><% if (r.manual) { %><br><span class="notice">Manual claim</span><% } %></td>
+      <td><% if (r.manual) { %>—<% } else if (r.leg === 1) { %>Leg 1<br><span class="notice">Pickup → Delivery</span><% } else { %>Leg 2<br><span class="notice">Delivery → Return</span><% } %></td>
+      <td class="num"><%= money(r.rate) %></td>
+      <td class="num"><%= money(r.returnFee) %></td>
+      <td class="num"><%= money(r.prepull) %></td>
+      <td class="num"><%= money(r.reefer) %></td>
+      <td class="num"><%= money(r.detention) %></td>
+      <td class="num"><%= money(r.overweight) %></td>
+      <td class="num"><%= money(r.fsc) %></td>
+      <td class="num"><%= money(r.insurance) %></td>
+      <td class="num"><b><%= money(r.claim) %></b></td>
+    </tr>
+    <% } %>
+    <% }) %>
+    <% if (!b.rows.length) { %><tr><td colspan="12" class="notice">No legs claimed this week.</td></tr><% } %>
+    <tr class="totals-row">
+      <td colspan="3">Total — <%= b.driver.name %></td>
+      <td class="num" colspan="8">Insurance (PierLink memo): <%= money(b.insurance) %></td>
+      <td class="num"><%= money(b.claim) %></td>
+    </tr>
+  </table>
+  <p style="margin-top:8px"><b>Payment for Next week (Mty Not Return): <%= money(b.holdTotal) %></b> <span class="notice">— leg-2 amounts of the $0 containers above; each appears with real amounts on the list for the week its empty return is confirmed</span></p>
+  <% if (b.stillOut.length) { %>
+  <p style="color:#8a6d00"><b>Still out from earlier weeks (not claimed yet):</b>
+    <% b.stillOut.forEach(function (r) { %><br>· <%= r.container || '' %> · <%= r.description || '' %> — delivered <%= fmtDate(r.dateISO) %>, leg 2 of <%= money(r.claim) %> still to claim<% }) %>
+    <br>Still-out total: <b><%= money(b.stillOutTotal) %></b></p>
+  <% } %>
+</div>
+<% }) %>
+<% if (!blocks.length) { %><div class="sheet"><p class="notice">No claim legs for this week yet.</p></div><% } %>
+
+</body>
+</html>
