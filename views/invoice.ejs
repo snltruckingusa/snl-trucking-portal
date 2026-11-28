@@ -34,13 +34,18 @@
   }
 %>
 <%- include('partials/header', { title: 'Invoice' }) %>
+<% if (view === 'drivers') { %>
+<h1>Driver Invoices</h1>
+<p class="notice">Each driver's weekly statement — the same document the driver checks and confirms in Settlement. Pay counts confirmed loads only: a load joins the statement once its tickets are approved and the load is confirmed.</p>
+<% } else { %>
 <h1>PierLink Invoice</h1>
 <p class="notice">Week: Sunday ~ Saturday. Claims can be adjusted separately from driver settlement. Loads whose empty return is not confirmed are held and carried into the next invoice as "Previous unpaid." Recording a payment (Paid) reduces that line's balance.<br>
 Claims are independent of driver settlement. Unpaid balances carry into the next invoice. Recording a payment reduces that line's balance.</p>
+<% } %>
 
 <div style="display:flex;gap:8px;margin:12px 0">
-  <a class="btn<%= view === 'drivers' ? ' secondary' : '' %>" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
   <a class="btn<%= view === 'drivers' ? '' : ' secondary' %>" href="/invoice?week=<%= weekISO %>&view=drivers">Driver Invoices — Statements</a>
+  <a class="btn<%= view === 'drivers' ? ' secondary' : '' %>" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
 </div>
 
 <div class="card">
