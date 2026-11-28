@@ -47,7 +47,7 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
       <button class="btn secondary" type="button" onclick="window.print()">Print</button></div>
   </form>
   <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b><% if (week.sent_at) { %> · <span class="badge good">Sent <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %>
-  <% if (view === 'home') { %> · <a href="/invoice?week=<%= weekISO %>&driver=all">Full invoice view (all drivers)</a><% } else { %> · <a href="/invoice?week=<%= weekISO %>">← Weekly dashboard</a><% } %></p>
+  <% if (view === 'home') { %> · <a href="/invoice?week=<%= weekISO %>&driver=all">Full invoice view (all drivers)</a><% } else { %> · <a href="/invoice?week=<%= weekISO %>">← Weekly dashboard</a><% } %> · <a href="/invoice/claim-list?week=<%= weekISO %>">Claim list for PierLink (leg by leg)</a></p>
 </div>
 
 <% if (view === 'home') { %>
@@ -161,6 +161,7 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
       <div class="form-row">
         <div><label>Description</label><input name="description"></div>
         <div><label>Rate</label><input name="rate" type="number" step="0.01" value="0"></div>
+        <div><label>Return</label><input name="return_fee" type="number" step="0.01" value="0"></div>
         <div><label>Prepull</label><input name="prepull" type="number" step="0.01" value="0"></div>
         <div><label>Reefer</label><input name="reefer" type="number" step="0.01" value="0"></div>
         <div><label>Detent</label><input name="detention" type="number" step="0.01" value="0"></div>
