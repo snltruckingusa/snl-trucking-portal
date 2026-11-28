@@ -42,17 +42,17 @@ async function computeWeek(weekStartISO, driverFilter) {
     const loads = await query(
       `SELECT COALESCE(SUM(${LOAD_MONEY_SQL}),0) AS revenue,
               COALESCE(SUM(miles),0) AS miles,
-              COUNT(DISTINCT load_date) AS days_worked
+              COUNT(DISTINCT COALESCE(delivered_on, load_date)) AS days_worked
        FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
-         AND load_date >= $2 AND load_date <= $3`,
+         AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3`,
       [d.id, wsISO, weISO]
     );
     // Statement detail: this driver's delivered loads for the week,
     // one row per load (Rate / Prepull / Reefer / Detention / OW / FSC).
     const loadRows = await query(
       `SELECT * FROM loads WHERE driver_id = $1 AND progress IN ('delivered', 'returned')
-         AND load_date >= $2 AND load_date <= $3
-       ORDER BY load_date, id`,
+         AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3
+       ORDER BY COALESCE(delivered_on, load_date), id`,
       [d.id, wsISO, weISO]
     );
     const fuel = await query(
@@ -126,7 +126,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     );
     const prevLoads = await query(
       `SELECT COALESCE(SUM(miles),0) AS miles FROM loads WHERE driver_id = $1
-         AND progress IN ('delivered', 'returned') AND load_date >= $2 AND load_date < $3`,
+         AND progress IN ('delivered', 'returned') AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) < $3`,
       [d.id, prevWsISO, wsISO]
     );
     const twoGal = gallons + parseFloat(prevFuel.rows[0].gallons);
@@ -147,7 +147,7 @@ async function computeWeek(weekStartISO, driverFilter) {
     fuelByDay.rows.forEach(r => { fuelMap[r.d] = parseFloat(r.c); });
     const revMap = {};
     loadRows.rows.forEach(l => {
-      const k = toISODate(new Date(l.load_date));
+      const k = toISODate(new Date(l.delivered_on || l.load_date));
       revMap[k] = (revMap[k] || 0) + loadTotal(l);
     });
     const weekDates = [];
@@ -158,8 +158,8 @@ async function computeWeek(weekStartISO, driverFilter) {
     const nextWsISO = toISODate(addDays(ws, 7));
     const nextWeISO = toISODate(addDays(ws, 13));
     const nextLoads = await query(
-      `SELECT DISTINCT load_date::text AS d FROM loads WHERE driver_id = $1
-         AND progress IN ('delivered', 'returned') AND load_date >= $2 AND load_date <= $3`,
+      `SELECT DISTINCT COALESCE(delivered_on, load_date)::text AS d FROM loads WHERE driver_id = $1
+         AND progress IN ('delivered', 'returned') AND COALESCE(delivered_on, load_date) >= $2 AND COALESCE(delivered_on, load_date) <= $3`,
       [d.id, nextWsISO, nextWeISO]
     );
     const weekend = computeWeekend({
