@@ -29,9 +29,15 @@
   }
   function statusBadge(st) {
     if (st.key === 'closed') return '<span class="badge good">' + st.label + '</span>';
+    if (st.key === 'explained') return '<span class="badge progress">' + st.label + '</span>';
     if (st.key === 'open') return '<span class="badge open">' + st.label + '</span>';
     if (st.key === 'partial') return '<span class="badge warn">' + st.label + '</span>';
     return '<span class="badge flag">' + st.label + '</span>';
+  }
+  function kindLabel(k) {
+    if (k === 'listed') return 'Listed';
+    if (k === 'adjustment') return 'Adjustment (reason)';
+    return 'Received';
   }
 %>
 <%- include('partials/header', { title: 'A/R' }) %>
@@ -142,6 +148,7 @@
 <%# ---------------- Customer drill-down ---------------- %>
 <p><a href="/ar">← All customers</a></p>
 <h1><%= customer.name %> <% if (customer.invoice_linked) { %><span class="badge progress">Claims from Invoice</span><% } else { %><span class="badge open">Manual claims</span><% } %></h1>
+<% if (customer.invoice_linked) { %><p class="no-print"><a href="/invoice/claim-list?week=<%= claimListWeek %>">Weekly claim list for PierLink (leg by leg) →</a> <span class="notice">— the Saturday send sheet these claimed totals come from</span></p><% } %>
 
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
   <div class="card" style="flex:1;min-width:130px;text-align:center;margin:0"><div class="notice">Claimed</div><div style="font-size:19px"><b><%= money(customer.totals.claimed) %></b></div></div>
@@ -159,8 +166,8 @@
       <td><b><%= w.weekLabel %></b></td>
       <td class="num"><%= money(w.claimed) %></td>
       <td class="num"><%= money(w.listed) %></td>
-      <td class="num"><%= money(w.received) %></td>
-      <td class="num"><% if (w.status.key !== 'closed') { %><b style="color:#d9534f"><%= money(w.status.diff) %></b><% } else { %><%= money(w.status.diff) %><% } %></td>
+      <td class="num"><%= money(w.received) %><% if (w.receivedDates && w.receivedDates.length) { %><br><span class="notice">received <%= w.receivedDates.join(', ') %></span><% } %></td>
+      <td class="num"><% if (w.status.key !== 'closed') { %><b style="color:#d9534f"><%= money(w.status.diff) %></b><% } else { %><%= money(w.status.diff) %><% } %><% if (w.status.diff !== 0 && w.explainedItems && w.explainedItems.length) { %><br><span class="notice"><% w.explainedItems.forEach(function (i) { %>· <%= i.label %>: <%= money(i.amount) %><br><% }) %>· Unexplained: <b><%= money(w.unexplained) %></b></span><% } %></td>
       <td><%- statusBadge(w.status) %></td>
       <% if (customer.invoice_linked) { %><td class="num"><%= money(w.invoicePaid) %></td><% } %>
     </tr>
@@ -177,15 +184,15 @@
     <input type="hidden" name="customer_id" value="<%= customer.id %>">
     <div><label>For week ending (Sat)</label><input type="date" name="week_of" required value="<%= todayISO %>" data-week-sat="entryWeekSat"><div id="entryWeekSat" class="notice"></div></div>
     <div><label>Kind</label>
-      <select name="kind"><% entryKinds.forEach(function (k) { %><option value="<%= k %>"><%= k === 'listed' ? 'Listed (announced)' : 'Received (deposit landed)' %></option><% }) %></select></div>
-    <div><label>Amount $</label><input type="number" name="amount" step="0.01" min="0" required></div>
+      <select name="kind"><% entryKinds.forEach(function (k) { %><option value="<%= k %>"><%= k === 'listed' ? 'Listed (announced)' : (k === 'adjustment' ? 'Adjustment (difference reason)' : 'Received (deposit landed)') %></option><% }) %></select></div>
+    <div><label>Amount $</label><input type="number" name="amount" step="0.01" required></div>
     <div><label>Date</label><input type="date" name="entry_date" value="<%= todayISO %>"></div>
     <div><label>Method</label>
       <select name="method"><option value="">—</option><% entryMethods.forEach(function (m) { %><option value="<%= m %>"><%= m %></option><% }) %></select></div>
     <div><label>Note</label><input type="text" name="note"></div>
     <div><button type="submit">Record</button></div>
   </form>
-  <p class="notice">Pick any day of the week — it is filed under the week ending that Saturday (weeks run Sun–Sat; the invoice goes out Saturday). Partial deposits are fine — rows for a week add up.</p>
+  <p class="notice">Pick any day of the week — it is filed under the week ending that Saturday (weeks run Sun–Sat; the invoice goes out Saturday). Partial deposits are fine — rows for a week add up. A deposit that also pays OLD, non-claim items is split: record the claim part here, and the old-items part under its own customer (e.g. "PierLink — Prior Adjustments") — never inside a claim week. <b>Adjustment</b> records WHY part of a week's difference exists: enter the amount exactly as it appears in the difference (claimed − received) and a note; it never changes Listed/Received.</p>
 </div>
 
 <% if (!customer.invoice_linked) { %>
@@ -233,7 +240,7 @@
     <tr>
       <td><%= e.entry_date %></td>
       <td><%= e.weekLabel %></td>
-      <td><%= e.kind === 'listed' ? 'Listed' : 'Received' %></td>
+      <td><%= kindLabel(e.kind) %></td>
       <td class="num"><%= money(e.amount) %></td>
       <td><%= e.method || '' %></td>
       <td><%= e.note || '' %></td>
