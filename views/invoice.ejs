@@ -4,6 +4,7 @@
     only the home dashboard is new. %>
 <%
   var dq = driverParam ? '&driver=' + encodeURIComponent(driverParam) : '';
+  var vq = view === 'drivers' ? '&view=drivers' : '';
   var shownBlocks = view === 'all' ? blocks
     : (view === 'driver' && selectedBlock ? [selectedBlock] : []);
   // Server-rendered donut (inline SVG, pathLength=100 segments).
@@ -37,18 +38,46 @@
 <p class="notice">Week: Sunday ~ Saturday. Claims can be adjusted separately from driver settlement. Loads whose empty return is not confirmed are held and carried into the next invoice as "Previous unpaid." Recording a payment (Paid) reduces that line's balance.<br>
 Claims are independent of driver settlement. Unpaid balances carry into the next invoice. Recording a payment reduces that line's balance.</p>
 
+<div style="display:flex;gap:8px;margin:12px 0">
+  <a class="btn<%= view === 'drivers' ? ' secondary' : '' %>" href="/invoice?week=<%= weekISO %>">PierLink Invoice — Weekly Claim</a>
+  <a class="btn<%= view === 'drivers' ? '' : ' secondary' %>" href="/invoice?week=<%= weekISO %>&view=drivers">Driver Invoices — Statements</a>
+</div>
+
 <div class="card">
   <form method="GET" action="/invoice" class="form-row" style="align-items:end">
     <div><label>Week of (Sun)</label><input type="date" name="week" value="<%= weekISO %>"></div>
     <% if (driverParam) { %><input type="hidden" name="driver" value="<%= driverParam %>"><% } %>
+    <% if (view === 'drivers') { %><input type="hidden" name="view" value="drivers"><% } %>
     <div><button type="submit">View</button>
-      <a class="btn secondary" href="/invoice?week=<%= prevWeek %><%= dq %>">← Prev week</a>
-      <a class="btn secondary" href="/invoice?week=<%= nextWeek %><%= dq %>">Next week →</a>
+      <a class="btn secondary" href="/invoice?week=<%= prevWeek %><%= dq %><%= vq %>">← Prev week</a>
+      <a class="btn secondary" href="/invoice?week=<%= nextWeek %><%= dq %><%= vq %>">Next week →</a>
       <button class="btn secondary" type="button" onclick="window.print()">Print</button></div>
   </form>
   <p style="margin-top:10px"><b><%= weekISO %> ~ <%= weekEndISO %></b><% if (week.sent_at) { %> · <span class="badge good">Sent <%= new Date(week.sent_at).toLocaleDateString() %></span><% } %>
-  <% if (view === 'home') { %> · <a href="/invoice?week=<%= weekISO %>&driver=all">Full invoice view (all drivers)</a><% } else { %> · <a href="/invoice?week=<%= weekISO %>">← Weekly dashboard</a><% } %> · <a href="/invoice/claim-list?week=<%= weekISO %>">Claim list for PierLink (leg by leg)</a></p>
+  <% if (view === 'drivers') { %> · <a href="/invoice?week=<%= weekISO %>">← PierLink invoice</a><% } else if (view === 'home') { %> · <a href="/invoice?week=<%= weekISO %>&driver=all">Full invoice view (all drivers)</a> · <a href="/invoice/claim-list?week=<%= weekISO %>">Claim list for PierLink (leg by leg)</a><% } else { %> · <a href="/invoice?week=<%= weekISO %>">← Weekly dashboard</a> · <a href="/invoice/claim-list?week=<%= weekISO %>">Claim list for PierLink (leg by leg)</a><% } %></p>
 </div>
+
+<% if (view === 'drivers') { %>
+<div class="card">
+  <h2>Driver invoices — <%= weekISO %> ~ <%= weekEndISO %></h2>
+  <p class="notice">Each driver's weekly statement — the same document the driver checks and confirms in Settlement. Open a statement to print it or save it for the driver.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Driver</th><th class="num">Revenue</th><th class="num">Fuel</th><th class="num">Insurance</th><th class="num">Driver pay</th><th>Driver confirm</th><th></th></tr>
+    <% stmtRows.forEach(function (r) { var cf = confirms[r.driver.id]; %>
+    <tr>
+      <td><b><%= r.driver.name %></b> <span class="notice">(#<%= r.driver.truck_number || '' %>)</span></td>
+      <td class="num"><%= money(r.revenue) %></td>
+      <td class="num"><%= money(r.fuelCost) %></td>
+      <td class="num"><%= money(r.insurance) %></td>
+      <td class="num"><b><%= money(r.driverPay) %></b></td>
+      <td><% if (cf && cf.note) { %><span class="badge warn">Question asked</span> <span class="notice"><%= cf.note %></span><% } else if (cf && cf.confirmed_at) { %><span class="badge good">Confirmed ✓</span> <span class="notice"><%= new Date(cf.confirmed_at).toLocaleString() %></span><% } else { %><span class="notice">Not confirmed</span><% } %></td>
+      <td><a class="btn secondary" href="/settlement/statement?driver_id=<%= r.driver.id %>&week=<%= weekISO %>" target="_blank" rel="noopener">Statement</a></td>
+    </tr>
+    <% }) %>
+    <% if (!stmtRows.length) { %><tr><td colspan="7" class="notice">No driver settlements for this week yet.</td></tr><% } %>
+  </table></div>
+</div>
+<% } %>
 
 <% if (view === 'home') { %>
 <div class="card">
@@ -174,7 +203,7 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
 </div>
 <% }) %>
 
-<% if (view !== 'driver') { %>
+<% if (view === 'home' || view === 'all') { %>
 <div class="card">
   <h2>Totals</h2>
   <div class="table-wrap"><table>
