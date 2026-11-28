@@ -448,10 +448,15 @@ router.get('/statement', requireLogin, async (req, res) => {
   // downtime_pay try/catch precedent in computeWeek above).
   let pendingLoads = [], fuelEntries = [];
   try {
+    // "Not yet counted" lists only loads picked BEFORE this week that are
+    // still out (Eric's week cut, 2026-11-28): a load picked this week for a
+    // later delivery belongs to its delivery week's statement, never this
+    // one. Once delivered it is counted there; while still out it surfaces
+    // here as a carried-in pending load.
     pendingLoads = (await query(
       `SELECT * FROM loads WHERE driver_id = $1 AND progress NOT IN ('delivered', 'returned')
-         AND load_date >= $2 AND load_date <= $3 ORDER BY load_date, id`,
-      [driverId, data.weekStartISO, data.weekEndISO]
+         AND load_date < $2 ORDER BY load_date, id`,
+      [driverId, data.weekStartISO]
     )).rows;
     fuelEntries = (await query(
       `SELECT * FROM fuel WHERE driver_id = $1 AND fuel_date >= $2 AND fuel_date <= $3
