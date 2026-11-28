@@ -175,7 +175,7 @@ async function customerWeeks(customer) {
     // Claimed = the week's claim-list legs (identical split to the
     // PierLink claim list — see claimHelpers in routes/invoice.js).
     const lines = (await query(
-      `SELECT il.*, l.load_date, l.delivery AS load_delivery, l.progress,
+      `SELECT il.*, l.load_date, l.delivered_on, l.delivery AS load_delivery, l.progress,
               l.returned_on, l.container_no, l.truck_number
        FROM invoice_lines il LEFT JOIN loads l ON l.id = il.load_id`
     )).rows;
