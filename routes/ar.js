@@ -53,7 +53,7 @@ const {
 // sections silently disagree. No require cycle: invoice.js never
 // requires this module.
 const { claimHelpers } = require('./invoice');
-const { lineLegs, lineTotal, HELP_INS_LEG, CLAIM_BASELINE_WEEK } = claimHelpers;
+const { lineLegs, CLAIM_BASELINE_WEEK } = claimHelpers;
 
 const router = express.Router();
 router.use(requireLogin);
@@ -141,6 +141,22 @@ function decompose(diff, explainedItems) {
   return { explained, unexplained: r2(num(diff) - explained) };
 }
 
+// Sealed pre-baseline weeks (Eric, 2026-11-28): for weeks before the
+// claim baseline, A/R claimed is NOT recomputed from portal lines —
+// the portal's line population for those weeks was rebuilt during
+// the November catch-up and does not reproduce what Eric actually
+// submitted (line-level gaps of +$100 / −$465 against his workbook).
+// The sealed figure is the amount Eric submitted that week, his
+// Excel S.Total (Total + Help Ins − Deduct), taken from his workbook
+// (Driver_s_Payment, 'Pierlink' sheet footers) and confirmed by Eric
+// on 2026-11-28: week ending Sat 2026-11-14 = $27,505.00 (Total
+// $27,735 + Help Ins $270 − Deduct $500); week ending Sat 2026-11-21
+// = $18,630.00 (Total $18,935 + Help Ins $195 − Deduct $500). The
+// automatic difference explainers (advance deduct, Help Ins) do NOT
+// apply to a sealed week — both are already inside its S.Total; only
+// Eric's recorded adjustment entries explain a sealed difference.
+const SEALED_WEEK_CLAIMS = { '2026-11-08': 27505, '2026-11-15': 18630 };
+
 // Build the week-by-week picture for one customer: claims (invoice or
 // manual), listed/received sums, deposit dates, recorded difference
 // reasons, and — for the invoice-linked customer — the invoice page's
@@ -165,23 +181,19 @@ async function customerWeeks(customer) {
     )).rows;
     for (const l of lines) {
       const lineWeek = asISO(l.claim_week);
-      if (lineWeek && lineWeek < CLAIM_BASELINE_WEEK) {
-        // Sealed pre-baseline week (claimed via Excel at the time):
-        // claimed = the week's line totals on the delivery-week
-        // basis, exactly as submitted. These lines' legs are never
-        // re-attributed into later weeks (see CLAIM_BASELINE_WEEK
-        // in routes/invoice.js).
-        const w = row(lineWeek);
-        w.claimed = r2(w.claimed + lineTotal(l));
-        if (l.load_id) w.helpIns = r2(w.helpIns + HELP_INS_LEG * 2);
-        continue;
-      }
+      if (lineWeek && lineWeek < CLAIM_BASELINE_WEEK) continue; // sealed — see SEALED_WEEK_CLAIMS below
       for (const leg of lineLegs(l, l.load_id ? l : null)) {
         if (leg.pending || !leg.weekISO) continue;
         const w = row(leg.weekISO);
         w.claimed = r2(w.claimed + leg.claim);
         w.helpIns = r2(w.helpIns + leg.insurance);
       }
+    }
+    // Sealed weeks carry Eric's submitted figures, verbatim.
+    for (const [wk, amt] of Object.entries(SEALED_WEEK_CLAIMS)) {
+      const w = row(wk);
+      w.claimed = r2(amt);
+      w.sealed = true;
     }
     const ref = (await query(
       `SELECT il.claim_week AS wk, SUM(ip.amount) AS amt
@@ -221,7 +233,7 @@ async function customerWeeks(customer) {
       // Difference decomposition: automatic explainers first
       // (invoice-linked weeks), then Eric's recorded reasons.
       const items = [];
-      if (customer.invoice_linked) {
+      if (customer.invoice_linked && !w.sealed) {
         const ded = deductByWeek[w.week];
         if (ded) items.push({ label: 'Advance deduct — deposits arrive net of it', amount: r2(ded) });
         if (w.helpIns) items.push({ label: 'Help Ins PierLink books on top of our claim', amount: r2(-w.helpIns) });
