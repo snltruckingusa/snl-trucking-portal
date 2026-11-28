@@ -22,7 +22,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { query } = require('../db');
 const { requireLogin, scopedDriverId, isAdmin, toISODate } = require('../lib/helpers');
 const { SAFETY_TOPICS } = require('../lib/safety');
-const { docChecklist, profileChecklist, contractChain } = require('../lib/checklists');
+const { docChecklist, profileChecklist, contractChain, isSignableCategory } = require('../lib/checklists');
 
 const router = express.Router();
 
@@ -62,7 +62,7 @@ router.get('/', requireLogin, async (req, res) => {
   if (scope) {
     const driver = (await query('SELECT * FROM drivers WHERE id = $1', [scope])).rows[0];
     const docs = (await query(
-      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+      'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at, upload_reason FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
       [scope]
     )).rows;
     const pendingChange = (await query(
@@ -86,7 +86,7 @@ router.get('/', requireLogin, async (req, res) => {
       driver, docs, pendingChange, training, companyRecords,
       categories: CATEGORIES, notice, todayISO,
       checklist: docChecklist(docs), profileItems: profileChecklist(driver),
-      chain: contractChain(docs),
+      chain: contractChain(docs), canSign: isSignableCategory,
     });
   }
 
@@ -99,7 +99,7 @@ router.get('/', requireLogin, async (req, res) => {
     driver = drivers.find((d) => d.id === driverId) || null;
     if (driver) {
       docs = (await query(
-        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
+        'SELECT id, driver_id, category, original_name, mime_type, size_bytes, expires_on, status, uploaded_at, is_duplicate, signed_by, signed_at, upload_reason FROM documents WHERE driver_id = $1 ORDER BY category, uploaded_at DESC',
         [driverId]
       )).rows;
     }
@@ -110,7 +110,7 @@ router.get('/', requireLogin, async (req, res) => {
      WHERE pc.status = 'pending' ORDER BY pc.created_at ASC`
   )).rows;
   const pendingDocs = (await query(
-    `SELECT doc.id, doc.category, doc.original_name, doc.uploaded_at, doc.expires_on,
+    `SELECT doc.id, doc.category, doc.original_name, doc.uploaded_at, doc.expires_on, doc.upload_reason,
             d.name AS driver_name, d.truck_number
      FROM documents doc JOIN drivers d ON d.id = doc.driver_id
      WHERE doc.status = 'pending' ORDER BY doc.uploaded_at ASC`
@@ -119,7 +119,7 @@ router.get('/', requireLogin, async (req, res) => {
     mode: 'admin', isAdmin: true, scopedDriverId: null,
     drivers, docs, driver, categories: CATEGORIES,
     pendingChanges, pendingDocs, notice, todayISO,
-    chain: contractChain(docs),
+    chain: contractChain(docs), canSign: isSignableCategory,
   });
 });
 
@@ -182,10 +182,34 @@ router.post('/upload', requireLogin, uploadMem.single('file'), async (req, res) 
   const category = CATEGORIES[req.body.category] ? req.body.category : 'other';
   const status = scope ? 'pending' : 'confirmed';
   try {
+    // Duplicate-upload guard (Eric, 2026-11-28) — DRIVER uploads only;
+    // the owner's uploads are unchanged. If this category already has a
+    // current record (the latest non-duplicate document, On file or
+    // Pending — an expired record counts too, renewals go through the
+    // reason), the driver must say WHY another one is needed. The
+    // upload form shows the warning and the reason field before submit;
+    // this check is the enforcement backstop. Without a reason nothing
+    // is saved. With one, the upload lands Pending as usual and the
+    // reason rides on the row so the owner sees it in the review.
+    const uploadReason = scope ? clean(req.body.upload_reason) : null;
+    if (scope) {
+      const existing = (await query(
+        `SELECT id FROM documents
+         WHERE driver_id = $1 AND category = $2 AND is_duplicate = false
+         ORDER BY uploaded_at DESC LIMIT 1`,
+        [driver_id, category]
+      )).rows[0];
+      if (existing && !uploadReason) {
+        return res.redirect('/documents?notice=' + encodeURIComponent(
+          'That document type is already registered — nothing was saved. ' +
+          'Check the document on file first; if you still need to add another one, ' +
+          'upload again and write the reason when asked.'));
+      }
+    }
     await query(
-      `INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on, file_data, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [driver_id, category, req.file.originalname, req.file.originalname, req.file.mimetype, req.file.size, expiresOn, req.file.buffer, status]
+      `INSERT INTO documents (driver_id, category, filename, original_name, mime_type, size_bytes, expires_on, file_data, status, upload_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [driver_id, category, req.file.originalname, req.file.originalname, req.file.mimetype, req.file.size, expiresOn, req.file.buffer, status, uploadReason]
     );
   } catch (e) {
     // Never let a failed insert crash the request (an unhandled async
@@ -261,6 +285,13 @@ router.get('/:id/sign', requireLogin, async (req, res) => {
       return res.redirect('/documents?driver_id=' + doc.driver_id + '&notice=' +
         encodeURIComponent('Signing works on PDF documents only.'));
     }
+    // Record-only categories never take a signature (Eric, 2026-11-28;
+    // the set lives in lib/checklists NON_SIGNABLE_CATEGORIES). The
+    // button is not rendered for them; this refuses a direct URL too.
+    if (!isSignableCategory(doc.category)) {
+      return res.redirect('/documents?driver_id=' + doc.driver_id + '&notice=' +
+        encodeURIComponent('This document does not need a signature — it is a record copy and is already on file.'));
+    }
     const driver = (await query('SELECT id, name FROM drivers WHERE id = $1', [doc.driver_id])).rows[0];
     const back = isAdmin(req) ? '/documents?driver_id=' + doc.driver_id : '/documents';
     return res.render('sign', {
@@ -283,6 +314,10 @@ router.post('/:id/sign', requireLogin, async (req, res) => {
     const got = await docBytesForUser(req, req.params.id);
     if (!got) return res.redirect('/documents');
     doc = got.doc;
+    // Same record-only guard as the signing page (Eric, 2026-11-28).
+    if (!isSignableCategory(doc.category)) {
+      return res.redirect('/documents' + (isAdmin(req) ? '?driver_id=' + doc.driver_id + '&' : '?') + 'notice=' + encodeURIComponent('This document does not need a signature — it is a record copy and is already on file.'));
+    }
     if (doc.signed_by || (doc.original_name || '').indexOf('(signed') !== -1) {
       return res.redirect('/documents' + (isAdmin(req) ? '?driver_id=' + doc.driver_id + '&' : '?') + 'notice=' + encodeURIComponent('This document is already signed.'));
     }
@@ -333,6 +368,12 @@ router.post('/:id/sign', requireLogin, async (req, res) => {
 });
 
 router.post('/:id/delete', requireLogin, async (req, res) => {
+  // Drivers cannot delete documents at all (Eric, 2026-11-28): a delete
+  // removes a record the owner already approved, and driver-side
+  // add/delete churn corrupts the file. The button is gone from My
+  // File; this refuses a direct POST too. The owner's delete below is
+  // unchanged.
+  if (scopedDriverId(req)) return res.status(403).send('Forbidden.');
   const scope = scopedDriverId(req);
   const r = await query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
   if (!r.rows.length) return res.redirect('/documents');
