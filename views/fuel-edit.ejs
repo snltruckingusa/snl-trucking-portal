@@ -1,0 +1,78 @@
+<%# Fuel edit form (Eric, 2026-11-28): the Edit half of the Delete +
+    Edit pair. Modeled on the Add-fuel form in fuel.ejs — same field
+    order (Date → Driver → Truck → Total $ → Gallons) and the same
+    live TCS $/gal preview — but every field starts from the row's
+    recorded values (the blank "-- Select --" rule is for ADD only).
+    pump_price is not an input anymore (2026-11-26); it rides along
+    as a hidden field so an edit stores the row's value back
+    unchanged instead of wiping pre-2026-11-24 history to 0. %>
+<%
+  var curTruck = String(row.truck_number || row.driver_truck || '').replace(/^#/, '');
+  var truckKnown = false;
+  (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ if (t === curTruck) truckKnown = true; });
+%>
+<%- include('partials/header', { title: 'Edit fuel' }) %>
+<h1>Edit fuel entry</h1>
+<div class="card">
+  <p>
+    <b><%= fmtDate(row.fuel_date) %></b> · <%= row.driver_name %> ·
+    Truck #<%= curTruck || '' %> · <%= row.gallons %> gal · <%= money(row.cost) %>
+  </p>
+  <p class="notice">TCS $/gal = <b>Total $ / gallons</b> — calculated automatically when you save. Enter the Total $ exactly as paid; it is stored as-is.</p>
+  <form method="POST" action="/fuel/<%= row.id %>/edit">
+    <div class="form-row">
+      <div><label>Date</label><input type="date" name="fuel_date" required value="<%= fmtDate(row.fuel_date) %>"></div>
+      <% if (isAdmin) { %>
+      <div><label>Driver</label><select name="driver_id" id="fuel-driver" required>
+        <% drivers.forEach(function(d){ %><option value="<%= d.id %>" data-truck="<%= String(d.truck_number || '').replace(/^#/, '') %>" <%= String(d.id) === String(row.driver_id) ? 'selected' : '' %>><%= d.name %> (#<%= d.truck_number || '' %>)</option><% }) %>
+      </select></div>
+      <% } else { %>
+      <input type="hidden" name="driver_id" value="<%= scopedDriverId %>">
+      <% } %>
+      <div><label>Truck</label><select name="truck_number" id="fuel-truck"<% if (isAdmin) { %> required<% } %>>
+        <% if (curTruck && !truckKnown) { %><option value="<%= curTruck %>" selected>#<%= curTruck %></option><% } %>
+        <% (typeof trucks !== 'undefined' ? trucks : []).forEach(function(t){ %><option value="<%= t %>" <%= t === curTruck ? 'selected' : '' %>>#<%= t %></option><% }) %>
+      </select></div>
+      <div><label>Total $</label><input name="cost" id="fuel-cost" type="number" step="0.01" inputmode="decimal" required value="<%= row.cost %>"></div>
+      <div><label>Gallons</label><input name="gallons" id="fuel-gallons" type="number" step="0.01" required value="<%= row.gallons %>"></div>
+      <div><label>TCS $/gal (auto)</label><input id="fuel-tcs" type="text" readonly tabindex="-1" placeholder="—"></div>
+    </div>
+    <input type="hidden" name="pump_price" value="<%= row.pump_price %>">
+    <div style="margin-top:12px"><button type="submit">Save changes</button>
+    <a class="btn secondary" href="/fuel">Cancel</a></div>
+  </form>
+</div>
+<script>
+(function(){
+  var ds = document.getElementById('fuel-driver'), ts = document.getElementById('fuel-truck');
+  if (ds && ts) {
+    // Same driver → truck sync as the Add form, but ONLY on change:
+    // opening this form must never move the truck off the value the
+    // row was recorded with (the Add form syncs on load because its
+    // truck starts blank).
+    function sync(){
+      var o = ds.options[ds.selectedIndex];
+      var t = o ? o.getAttribute('data-truck') : '';
+      if (!t) { ts.selectedIndex = 0; return; }
+      for (var i = 0; i < ts.options.length; i++) { if (ts.options[i].value === t) { ts.selectedIndex = i; break; } }
+    }
+    ds.addEventListener('change', sync);
+  }
+  // Live TCS $/gal preview — identical to the Add form's: Total $ /
+  // Gallons, rounded the way the server stores it (4 decimals).
+  // Display only; the server recomputes on save. Runs on load so the
+  // box opens showing the row's current TCS $/gal.
+  var costEl = document.getElementById('fuel-cost'),
+      galEl = document.getElementById('fuel-gallons'),
+      tcsEl = document.getElementById('fuel-tcs');
+  function upd(){
+    if (!tcsEl) return;
+    var c = parseFloat(costEl && costEl.value), g = parseFloat(galEl && galEl.value);
+    tcsEl.value = (c > 0 && g > 0) ? (Math.round((c / g) * 10000) / 10000).toFixed(4) : '';
+  }
+  if (costEl) costEl.addEventListener('input', upd);
+  if (galEl) galEl.addEventListener('input', upd);
+  upd();
+})();
+</script>
+<%- include('partials/footer') %>
