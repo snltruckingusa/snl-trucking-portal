@@ -127,6 +127,25 @@ Claims are independent of driver settlement. Unpaid balances carry into the next
   </div>
 </div>
 
+<% if (unpaidWeeks) { %>
+<div class="card">
+  <h2>Unpaid by week — resolve one by one</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Week</th><th class="num">Claimed</th><th class="num">Received</th><th class="num">Balance</th><th>Status</th></tr>
+    <% unpaidWeeks.rows.forEach(function (r) { %>
+    <tr<% if (r.resolved) { %> style="color:#888"<% } %>>
+      <td><% if (r.weekISO) { %>Week ending Sat <%= r.weekEndISO %><% if (r.current) { %> <span class="badge">This week</span><% } %><% } else { %><%= r.label %><% } %></td>
+      <td class="num"><%= money(r.claimed) %></td>
+      <td class="num"><%= money(r.received) %></td>
+      <td class="num"><b><%= money(r.balance) %></b></td>
+      <td><% if (r.resolved) { %>✓ Resolved<% } else if (r.current) { %>Awaiting deposit<% } else { %>Open<% } %></td>
+    </tr>
+    <% }) %>
+  </table></div>
+  <p class="notice">One row per week, checked off as it resolves — the Unpaid card above is the sum of the open rows before this week. A live week's balance = expected deposit (claim + Help Ins − $500 deduct) − received − adjustments; sealed weeks use the submitted totals. Resolve a week in <a href="/ar">A/R</a> by recording the deposit or an adjustment with its reason.</p>
+</div>
+<% } %>
+
 <div class="card">
   <h2>Weekly Claim — by driver</h2>
   <div class="table-wrap"><table>
